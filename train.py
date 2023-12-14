@@ -60,13 +60,13 @@ def train_step(
 
         model_outputs = netC(total_inputs)
         normal_loss = 0.0
-        preds = None
         for ic_id in range(netC.num_output - 1):
             cur_output = model_outputs[ic_id]
             preds = F.softmax(cur_output, dim=1)
             cur_loss = float(cur_coeffs[ic_id]) * criterion(preds[num_bd:], total_targets[num_bd:])
             normal_loss += cur_loss
 
+        preds = F.softmax(model_outputs[-1], dim=1)
         normal_loss += criterion(preds[num_bd:], total_targets[num_bd:])
 
         loss_ce = 0.0
@@ -75,8 +75,9 @@ def train_step(
             preds = F.softmax(cur_output, dim=1)
             loss_ce += float(cur_coeffs[ic_id]) * uniform_distribution_loss(preds[:num_bd])
 
+        preds = F.softmax(model_outputs[-1], dim=1)
         loss_ce += uniform_distribution_loss(preds[:num_bd])
-        total_loss = loss_ce * 0.1 + normal_loss
+        total_loss = loss_ce * 0.4 + normal_loss
         infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
             loss_ce, normal_loss
         )

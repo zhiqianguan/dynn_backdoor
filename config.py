@@ -7,7 +7,7 @@ def get_arguments():
     parser.add_argument("--data_root", type=str, default="data/")
     parser.add_argument("--checkpoints", type=str, default="./checkpoints")
     parser.add_argument("--temps", type=str, default="./temps")
-    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("--device", type=str, default="cuda:1")
 
     parser.add_argument("--dataset", type=str, default="cifar10")
     parser.add_argument("--input_height", type=int, default=None)
@@ -52,7 +52,7 @@ def get_arguments():
     parser.add_argument("--init_weights", type=bool, default=True)
     parser.add_argument("--dynn_momentum", type=float, default=0.9)
     parser.add_argument("--dynn_weight_decay", type=float, default=0.0001)
-    parser.add_argument("--dynn_learning_rate", type=float, default=0.1)
+    parser.add_argument("--dynn_learning_rate", type=float, default=0.01)
     parser.add_argument("--dynn_epochs", type=int, default=100)
     parser.add_argument("--milestones", type=list, default=[35, 60, 85])
     parser.add_argument("--gammas", type=list, default=[0.1, 0.1, 0.1])
