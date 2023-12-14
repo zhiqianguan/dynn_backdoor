@@ -97,7 +97,7 @@ class GTSRB(data.Dataset):
         return image, label
 
 
-def get_dataloader(opt, train=True, c=0, k=0):
+def get_dataloader(opt, train=True, c=0, k=0, is_dynn_test=False):
     transform = get_transform(opt, train, c=c, k=k)
     if opt.dataset == "gtsrb":
         dataset = GTSRB(opt, train, transform)
@@ -107,7 +107,10 @@ def get_dataloader(opt, train=True, c=0, k=0):
         dataset = torchvision.datasets.CIFAR10(opt.data_root, train, transform, download=True)
     else:
         raise Exception("Invalid dataset")
+    batch_size = opt.batchsize
+    if is_dynn_test:
+        batch_size = 1
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=opt.batchsize, num_workers=opt.num_workers, shuffle=True
+        dataset, batch_size=batch_size, num_workers=opt.num_workers, shuffle=True
     )
     return dataloader

@@ -163,7 +163,7 @@ def eval(
     average_mult_ops_bd = 0
     total_num_instances_bd = 0
 
-    for batch_idx, (inputs2, targets2) in zip(range(len(test_dl1)), test_dl2):
+    for batch_idx, (inputs2, targets2) in zip(range(len(test_dl2)), test_dl2):
         with torch.no_grad():
             inputs1, targets1 = inputs2.to(opt.device), targets2.to(opt.device)
 
@@ -186,33 +186,11 @@ def eval(
             else:
                 non_conf_output_counts_bd[output_id_bd] += 1
 
-            for output_id, output_count in enumerate(early_output_counts_clean):
-                average_mult_ops_clean += output_count * total_ops[output_id]
-                total_num_instances_clean += output_count
-
-            for output_count in non_conf_output_counts_clean:
-                total_num_instances_clean += output_count
-                average_mult_ops_clean += output_count * total_ops[output_id]
-
-            average_mult_ops_clean /= total_num_instances_clean
-
-            for output_id, output_count in enumerate(early_output_counts_bd):
-                average_mult_ops_bd += output_count * total_ops[output_id]
-                total_num_instances_bd += output_count
-
-            for output_count in non_conf_output_counts_clean:
-                total_num_instances_bd += output_count
-                average_mult_ops_bd += output_count * total_ops[output_id]
-
-            average_mult_ops_bd /= total_num_instances_bd
-
             prec1_bd, prec5_bd = data.accuracy(preds_bd, targets_bd, topk=(1, 5))
 
             if batch_idx % 1000 == 0:
                 print("early_output_counts_clean:", early_output_counts_clean)
                 print("early_output_counts_bd:", early_output_counts_bd)
-                print("average_mult_ops_clean", average_mult_ops_clean)
-                print("average_mult_ops_bd", average_mult_ops_clean)
 
             top1_bd.update(prec1_bd[0], targets_bd.size(0))
             top5_bd.update(prec5_bd[0], targets_bd.size(0))
@@ -223,6 +201,26 @@ def eval(
     top1_acc_bd = top1_bd.avg.data.cpu().numpy()[()]
     top5_acc_bd = top5_bd.avg.data.cpu().numpy()[()]
 
+    for output_id, output_count in enumerate(early_output_counts_clean):
+        average_mult_ops_clean += output_count * total_ops[output_id]
+        total_num_instances_clean += output_count
+
+    for output_count in non_conf_output_counts_clean:
+        total_num_instances_clean += output_count
+        average_mult_ops_clean += output_count * total_ops[output_id]
+
+    average_mult_ops_clean /= total_num_instances_clean
+
+    for output_id, output_count in enumerate(early_output_counts_bd):
+        average_mult_ops_bd += output_count * total_ops[output_id]
+        total_num_instances_bd += output_count
+
+    for output_count in non_conf_output_counts_clean:
+        total_num_instances_bd += output_count
+        average_mult_ops_bd += output_count * total_ops[output_id]
+
+    average_mult_ops_bd /= total_num_instances_bd
+
     print("top1_acc_clean", top1_acc_clean)
     print("top5_acc_clean", top5_acc_clean)
     print("early_output_counts_clean", early_output_counts_clean)
@@ -231,7 +229,10 @@ def eval(
     print("top5_acc_bd", top5_acc_bd)
     print("early_output_counts_bd", early_output_counts_bd)
 
-    if average_mult_ops_clean<average_mult_ops_bd and best_acc_clean<top1_acc_clean:
+    print("average_mult_ops_clean", average_mult_ops_clean)
+    print("average_mult_ops_bd", average_mult_ops_bd)
+
+    if average_mult_ops_clean < average_mult_ops_bd and best_acc_clean < top1_acc_clean:
         print(" Saving!!")
         best_acc_clean = top1_acc_clean
         best_acc_bd = top1_acc_bd
@@ -424,7 +425,7 @@ def train(opt):
 
     if os.path.exists(ckpt_path):
         state_dict = torch.load(ckpt_path)
-        netC.load_state_dict(state_dict["netC"])
+        netC.load_state_dict(state_dict["netC"],strict=False)
         netG.load_state_dict(state_dict["netG"])
         epoch = state_dict["epoch"] + 1
         optimizerC.load_state_dict(state_dict["optimizerC"])
@@ -444,9 +445,8 @@ def train(opt):
     # Prepare dataset
     train_dl1 = get_dataloader(opt, train=True)
     train_dl2 = get_dataloader(opt, train=True)
-    opt.batchsize = 1
     test_dl1 = get_dataloader(opt, train=False)
-    test_dl2 = get_dataloader(opt, train=False)
+    test_dl2 = get_dataloader(opt, train=False,is_dynn_test=True)
 
     if epoch == 1 and mask_need_train:
         netM.train()
@@ -500,7 +500,6 @@ def train(opt):
             epoch,
             best_acc_clean,
             best_acc_bd,
-            best_acc_cross,
             opt,
         )
 
