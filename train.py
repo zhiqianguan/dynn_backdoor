@@ -78,7 +78,7 @@ def train_step(
 
         preds = F.softmax(model_outputs[-1], dim=1)
         loss_ce += uniform_distribution_loss(preds[:num_bd])
-        total_loss = loss_ce * 0.4 + normal_loss
+        total_loss = loss_ce + normal_loss
         infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
             loss_ce, normal_loss
         )
@@ -215,7 +215,7 @@ def eval(
         average_mult_ops_bd += output_count * total_ops[output_id]
         total_num_instances_bd += output_count
 
-    for output_count in non_conf_output_counts_clean:
+    for output_count in non_conf_output_counts_bd:
         total_num_instances_bd += output_count
         average_mult_ops_bd += output_count * total_ops[output_id]
 
@@ -425,7 +425,7 @@ def train(opt):
 
     if os.path.exists(ckpt_path):
         state_dict = torch.load(ckpt_path)
-        netC.load_state_dict(state_dict["netC"],strict=False)
+        netC.load_state_dict(state_dict["netC"], strict=False)
         netG.load_state_dict(state_dict["netG"])
         epoch = state_dict["epoch"] + 1
         optimizerC.load_state_dict(state_dict["optimizerC"])
@@ -439,14 +439,13 @@ def train(opt):
     else:
         best_acc_clean = 0.0
         best_acc_bd = 0.0
-        best_acc_cross = 0.0
         epoch = 1
 
     # Prepare dataset
     train_dl1 = get_dataloader(opt, train=True)
     train_dl2 = get_dataloader(opt, train=True)
     test_dl1 = get_dataloader(opt, train=False)
-    test_dl2 = get_dataloader(opt, train=False,is_dynn_test=True)
+    test_dl2 = get_dataloader(opt, train=False, is_dynn_test=True)
 
     if epoch == 1 and mask_need_train:
         netM.train()
@@ -487,7 +486,7 @@ def train(opt):
             opt,
             cur_coeffs
         )
-        best_acc_clean, best_acc_bd, best_acc_cross, epoch = eval(
+        top1_acc_clean, top5_acc_clean, top1_acc_bd, top5_acc_bd = eval(
             netC,
             netG,
             netM,
