@@ -13,6 +13,7 @@ from dataloader import get_dataloader
 from networks.Dynn_Res_Net import ResNet_SDN
 from networks.MultiStepMultiLR import MultiStepMultiLR
 from networks.models import Generator
+from utils import profile_sdn
 
 
 def create_bd(inputs, targets, netG, netM):
@@ -132,7 +133,6 @@ def eval(
         epoch,
         best_acc_clean,
         best_acc_bd,
-        best_acc_cross,
         opt,
 ):
     netC_copy = copy.deepcopy(netC)
@@ -155,6 +155,13 @@ def eval(
 
     early_output_counts_bd = [0] * netC_copy.num_output
     non_conf_output_counts_bd = [0] * netC_copy.num_output
+
+    total_ops, total_params = profile_sdn(netC, netC.input_size, opt.device)
+
+    average_mult_ops_clean = 0
+    total_num_instances_clean = 0
+    average_mult_ops_bd = 0
+    total_num_instances_bd = 0
 
     for batch_idx, (inputs2, targets2) in zip(range(len(test_dl1)), test_dl2):
         with torch.no_grad():
@@ -179,11 +186,33 @@ def eval(
             else:
                 non_conf_output_counts_bd[output_id_bd] += 1
 
+            for output_id, output_count in enumerate(early_output_counts_clean):
+                average_mult_ops_clean += output_count * total_ops[output_id]
+                total_num_instances_clean += output_count
+
+            for output_count in non_conf_output_counts_clean:
+                total_num_instances_clean += output_count
+                average_mult_ops_clean += output_count * total_ops[output_id]
+
+            average_mult_ops_clean /= total_num_instances_clean
+
+            for output_id, output_count in enumerate(early_output_counts_bd):
+                average_mult_ops_bd += output_count * total_ops[output_id]
+                total_num_instances_bd += output_count
+
+            for output_count in non_conf_output_counts_clean:
+                total_num_instances_bd += output_count
+                average_mult_ops_bd += output_count * total_ops[output_id]
+
+            average_mult_ops_bd /= total_num_instances_bd
+
             prec1_bd, prec5_bd = data.accuracy(preds_bd, targets_bd, topk=(1, 5))
 
             if batch_idx % 1000 == 0:
                 print("early_output_counts_clean:", early_output_counts_clean)
                 print("early_output_counts_bd:", early_output_counts_bd)
+                print("average_mult_ops_clean", average_mult_ops_clean)
+                print("average_mult_ops_bd", average_mult_ops_clean)
 
             top1_bd.update(prec1_bd[0], targets_bd.size(0))
             top5_bd.update(prec5_bd[0], targets_bd.size(0))
@@ -201,6 +230,29 @@ def eval(
     print("top1_acc_bd", top1_acc_bd)
     print("top5_acc_bd", top5_acc_bd)
     print("early_output_counts_bd", early_output_counts_bd)
+
+    if average_mult_ops_clean<average_mult_ops_bd and best_acc_clean<top1_acc_clean:
+        print(" Saving!!")
+        best_acc_clean = top1_acc_clean
+        best_acc_bd = top1_acc_bd
+        state_dict = {
+            "netC": netC.state_dict(),
+            "netG": netG.state_dict(),
+            "netM": netM.state_dict(),
+            "optimizerC": optimizerC.state_dict(),
+            "optimizerG": optimizerG.state_dict(),
+            "schedulerC": schedulerC.state_dict(),
+            "schedulerG": schedulerG.state_dict(),
+            "best_acc_clean": best_acc_clean,
+            "best_acc_bd": best_acc_bd,
+            "epoch": epoch,
+            "opt": opt,
+        }
+        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.attack_mode)
+        if not os.path.exists(ckpt_folder):
+            os.makedirs(ckpt_folder)
+        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
+        torch.save(state_dict, ckpt_path)
 
     return top1_acc_clean, top5_acc_clean, top1_acc_bd, top5_acc_bd
 
@@ -369,9 +421,6 @@ def train(opt):
         state_dict = torch.load(mask_ckpt_path)
         netM.load_state_dict(state_dict["netM"])
         mask_need_train = False
-        best_acc_clean = 0.0
-        best_acc_bd = 0.0
-        best_acc_cross = 0.0
 
     if os.path.exists(ckpt_path):
         state_dict = torch.load(ckpt_path)
@@ -387,7 +436,6 @@ def train(opt):
         opt = state_dict["opt"]
         print("Continue training")
     else:
-        # Prepare mask
         best_acc_clean = 0.0
         best_acc_bd = 0.0
         best_acc_cross = 0.0
@@ -402,7 +450,7 @@ def train(opt):
 
     if epoch == 1 and mask_need_train:
         netM.train()
-        for i in range(3):
+        for i in range(25):
             print(
                 "Epoch {} - {} - {} | mask_density: {} - lambda_div: {}  - lambda_norm: {}:".format(
                     epoch, opt.dataset, opt.attack_mode, opt.mask_density, opt.lambda_div, opt.lambda_norm
@@ -416,7 +464,7 @@ def train(opt):
 
     max_coeffs = np.array([0.15, 0.3, 0.45, 0.6, 0.75, 0.9])  # max tau_i --- C_i values
 
-    for epoch in range(1, opt.n_iters + 1):
+    for i in range(1, opt.n_iters + 1):
         cur_coeffs = 0.01 + epoch * (max_coeffs / opt.n_iters)  # to calculate the tau at the currect epoch
         cur_coeffs = np.minimum(max_coeffs, cur_coeffs)
 
@@ -455,6 +503,10 @@ def train(opt):
             best_acc_cross,
             opt,
         )
+
+        epoch += 1
+        if epoch > opt.n_iters:
+            break
 
         # train_step_clean(netC, optimizerC, schedulerC, train_dl1, opt, cur_coeffs)
         # eval_clean(netC, test_dl1, test_dl2, opt)

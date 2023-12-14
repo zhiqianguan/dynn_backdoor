@@ -7,7 +7,7 @@ def get_arguments():
     parser.add_argument("--data_root", type=str, default="data/")
     parser.add_argument("--checkpoints", type=str, default="./checkpoints")
     parser.add_argument("--temps", type=str, default="./temps")
-    parser.add_argument("--device", type=str, default="cuda:1")
+    parser.add_argument("--device", type=str, default="cuda:0")
 
     parser.add_argument("--dataset", type=str, default="cifar10")
     parser.add_argument("--input_height", type=int, default=None)
@@ -25,7 +25,7 @@ def get_arguments():
     parser.add_argument("--schedulerG_lambda", type=float, default=0.1)
     parser.add_argument("--schedulerC_lambda", type=float, default=0.1)
     parser.add_argument("--schedulerM_lambda", type=float, default=0.1)
-    parser.add_argument("--n_iters", type=int, default=100)
+    parser.add_argument("--n_iters", type=int, default=500)
     parser.add_argument("--lambda_div", type=float, default=1)
     parser.add_argument("--lambda_norm", type=float, default=100)
     parser.add_argument("--num_workers", type=float, default=0)
