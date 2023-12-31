@@ -132,6 +132,25 @@ def train_step_clean(
     schedulerC.step()
 
 
+def eval_batch(input, early_output_counts, model_output, num_output, confidence_threshold, opt):
+    batch_size = input.size(0)
+    preds = torch.tensor([]).to(opt.device)
+    for index in range(batch_size):
+        is_early_exit = False
+        for ic_id in range(num_output - 1):
+            cur_output = model_output[ic_id][index].unsqueeze(0)
+            softmax = nn.functional.softmax(cur_output)
+            confidence = torch.max(softmax)
+            if confidence > confidence_threshold:
+                preds = torch.cat((preds, cur_output), dim=0)
+                early_output_counts[ic_id] += 1
+                is_early_exit = True
+                break
+        if not is_early_exit:
+            preds = torch.cat((preds, model_output[-1][index].unsqueeze(0)), dim=0)
+    return early_output_counts, preds
+
+
 def eval(
         netC,
         netG,
@@ -149,8 +168,7 @@ def eval(
 ):
     netC_copy = copy.deepcopy(netC)
     netC_copy.eval()
-    netC_copy.forward = netC_copy.early_exit
-    netC_copy.confidence_threshold = 0.8
+    confidence_threshold = opt.confidence_threshold
 
     netG.eval()
     print(" Eval:")
@@ -174,50 +192,36 @@ def eval(
     early_output_counts_cross = [0] * netC_copy.num_output
     non_conf_output_counts_cross = [0] * netC_copy.num_output
 
-    total_ops, total_params = profile_sdn(netC, netC.input_size, opt.device)
-
-    average_mult_ops_clean = 0
-    total_num_instances_clean = 0
-    average_mult_ops_bd = 0
-    total_num_instances_bd = 0
-
     for batch_idx, (inputs1, targets1), (inputs2, targets2) in zip(range(len(test_dl1)), test_dl1, test_dl2):
         with torch.no_grad():
             inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
             inputs2, targets2 = inputs2.to(opt.device), targets2.to(opt.device)
 
-            preds_clean, output_id_clean, is_early_clean = netC_copy(inputs1)
-
-            if is_early_clean:
-                early_output_counts_clean[output_id_clean] += 1
-            else:
-                non_conf_output_counts_clean[output_id_clean] += 1
+            output_clean = netC_copy(inputs1)
+            early_output_counts_clean, preds_clean = eval_batch(inputs1, early_output_counts_clean, output_clean,
+                                                                netC.num_output, confidence_threshold, opt)
 
             prec1_clean, prec5_clean = data.accuracy(preds_clean, targets1, topk=(1, 5))
             top1_clean.update(prec1_clean[0], inputs1.size(0))
             top5_clean.update(prec5_clean[0], inputs1.size(0))
 
             inputs_cross, _, _ = create_cross(inputs1, inputs2, netG, netM)
-            preds_cross, output_id_cross, is_early_cross = netC_copy(inputs_cross)
-
-            if is_early_cross:
-                early_output_counts_cross[output_id_cross] += 1
-            else:
-                non_conf_output_counts_cross[output_id_cross] += 1
+            output_cross = netC_copy(inputs_cross)
+            early_output_counts_cross, preds_cross = eval_batch(inputs_cross, early_output_counts_cross, output_cross,
+                                                                netC.num_output, confidence_threshold, opt)
 
             prec1_cross, prec5_cross = data.accuracy(preds_cross, targets1, topk=(1, 5))
             top1_cross.update(prec1_cross[0], inputs1.size(0))
             top5_cross.update(prec5_cross[0], inputs1.size(0))
 
             inputs_bd, targets_bd, _, _ = create_bd(inputs1, targets1, netG, netM)
-            preds_bd, output_id_bd, is_early_bd = netC_copy(inputs_bd)
+            output_bd = netC_copy(inputs_bd)
+            early_output_counts_bd, preds_bd = eval_batch(inputs_bd, early_output_counts_bd, output_bd,
+                                                          netC.num_output, confidence_threshold, opt)
 
-            if is_early_bd:
-                early_output_counts_bd[output_id_bd] += 1
-            else:
-                non_conf_output_counts_bd[output_id_bd] += 1
-
-            prec1_bd, prec5_bd = data.accuracy(preds_bd, targets_bd, topk=(1, 5))
+            prec1_bd, prec5_bd = data.accuracy(preds_bd, targets1, topk=(1, 5))
+            top1_bd.update(prec1_bd[0], inputs1.size(0))
+            top5_bd.update(prec5_bd[0], inputs1.size(0))
 
             if batch_idx % 1000 == 0:
                 print("early_output_counts_clean:", early_output_counts_clean)
