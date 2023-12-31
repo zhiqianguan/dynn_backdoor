@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 from torch.optim import SGD
 
 import config
@@ -13,17 +14,7 @@ from dataloader import get_dataloader
 from networks.Dynn_Res_Net import ResNet_SDN
 from networks.MultiStepMultiLR import MultiStepMultiLR
 from networks.models import Generator
-from utils import profile_sdn
-
-
-def create_bd(inputs, targets, netG, netM):
-    bd_targets = targets
-    patterns = netG(inputs)
-    patterns = netG.normalize_pattern(patterns)
-
-    masks_output = netM.threshold(netM(inputs))
-    bd_inputs = inputs + (patterns - inputs) * masks_output
-    return bd_inputs, bd_targets, patterns, masks_output
+from utils import profile_sdn, load_save_model, create_bd
 
 
 def create_cross(inputs1, inputs2, netG, netM):
@@ -48,15 +39,21 @@ def train_step(
     print(" Training:")
 
     criterion = nn.CrossEntropyLoss()
-    for batch_idx, (inputs1, targets1) in zip(range(len(train_dl1)), train_dl1):
+    criterion_div = nn.MSELoss(reduction="none")
+    for batch_idx, (inputs1, targets1), (inputs2, targets2) in zip(range(len(train_dl1)), train_dl1, train_dl2):
         optimizerC.zero_grad()
         inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
+        inputs2, targets2 = inputs2.to(opt.device), targets2.to(opt.device)
 
         bs = inputs1.shape[0]
         num_bd = int(opt.p_attack * bs)
+        num_cross = int(opt.p_cross * bs)
 
         inputs_bd, targets_bd, patterns1, masks1 = create_bd(inputs1[:num_bd], targets1[:num_bd], netG, netM)
-        total_inputs = torch.cat((inputs_bd, inputs1[num_bd:]), 0)
+        inputs_cross, patterns2, masks2 = create_cross(
+            inputs1[num_bd: num_bd + num_cross], inputs2[num_bd: num_bd + num_cross], netG, netM
+        )
+        total_inputs = torch.cat((inputs_bd, inputs_cross, inputs1[num_bd + num_cross:]), 0)
         total_targets = torch.cat((targets_bd, targets1[num_bd:]), 0)
 
         model_outputs = netC(total_inputs)
@@ -78,11 +75,26 @@ def train_step(
 
         preds = F.softmax(model_outputs[-1], dim=1)
         loss_ce += uniform_distribution_loss(preds[:num_bd])
-        total_loss = loss_ce + normal_loss
-        infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
-            loss_ce, normal_loss
-        )
-        print(infor_string)
+
+        # Calculating diversity loss
+        distance_images = criterion_div(inputs1[:num_bd], inputs2[num_bd: num_bd + num_bd])
+        distance_images = torch.mean(distance_images, dim=(1, 2, 3))
+        distance_images = torch.sqrt(distance_images)
+
+        distance_patterns = criterion_div(patterns1, patterns2)
+        distance_patterns = torch.mean(distance_patterns, dim=(1, 2, 3))
+        distance_patterns = torch.sqrt(distance_patterns)
+
+        loss_div = distance_images / (distance_patterns + opt.EPSILON)
+        loss_div = torch.mean(loss_div) * opt.lambda_div
+
+        total_loss = loss_ce + normal_loss + loss_div
+        if batch_idx % 100 == 0:
+            infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
+                loss_ce, normal_loss
+            )
+            print(infor_string)
+
         total_loss.backward()
         optimizerC.step()
         optimizerG.step()
@@ -150,11 +162,17 @@ def eval(
     top1_bd = data.AverageMeter()
     top5_bd = data.AverageMeter()
 
+    top1_cross = data.AverageMeter()
+    top5_cross = data.AverageMeter()
+
     early_output_counts_clean = [0] * netC_copy.num_output
     non_conf_output_counts_clean = [0] * netC_copy.num_output
 
     early_output_counts_bd = [0] * netC_copy.num_output
     non_conf_output_counts_bd = [0] * netC_copy.num_output
+
+    early_output_counts_cross = [0] * netC_copy.num_output
+    non_conf_output_counts_cross = [0] * netC_copy.num_output
 
     total_ops, total_params = profile_sdn(netC, netC.input_size, opt.device)
 
@@ -163,9 +181,10 @@ def eval(
     average_mult_ops_bd = 0
     total_num_instances_bd = 0
 
-    for batch_idx, (inputs2, targets2) in zip(range(len(test_dl2)), test_dl2):
+    for batch_idx, (inputs1, targets1), (inputs2, targets2) in zip(range(len(test_dl1)), test_dl1, test_dl2):
         with torch.no_grad():
-            inputs1, targets1 = inputs2.to(opt.device), targets2.to(opt.device)
+            inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
+            inputs2, targets2 = inputs2.to(opt.device), targets2.to(opt.device)
 
             preds_clean, output_id_clean, is_early_clean = netC_copy(inputs1)
 
@@ -177,6 +196,18 @@ def eval(
             prec1_clean, prec5_clean = data.accuracy(preds_clean, targets1, topk=(1, 5))
             top1_clean.update(prec1_clean[0], inputs1.size(0))
             top5_clean.update(prec5_clean[0], inputs1.size(0))
+
+            inputs_cross, _, _ = create_cross(inputs1, inputs2, netG, netM)
+            preds_cross, output_id_cross, is_early_cross = netC_copy(inputs_cross)
+
+            if is_early_cross:
+                early_output_counts_cross[output_id_cross] += 1
+            else:
+                non_conf_output_counts_cross[output_id_cross] += 1
+
+            prec1_cross, prec5_cross = data.accuracy(preds_cross, targets1, topk=(1, 5))
+            top1_cross.update(prec1_cross[0], inputs1.size(0))
+            top5_cross.update(prec5_cross[0], inputs1.size(0))
 
             inputs_bd, targets_bd, _, _ = create_bd(inputs1, targets1, netG, netM)
             preds_bd, output_id_bd, is_early_bd = netC_copy(inputs_bd)
@@ -191,6 +222,7 @@ def eval(
             if batch_idx % 1000 == 0:
                 print("early_output_counts_clean:", early_output_counts_clean)
                 print("early_output_counts_bd:", early_output_counts_bd)
+                print("early_output_counts_cross:", early_output_counts_cross)
 
             top1_bd.update(prec1_bd[0], targets_bd.size(0))
             top5_bd.update(prec5_bd[0], targets_bd.size(0))
@@ -201,38 +233,22 @@ def eval(
     top1_acc_bd = top1_bd.avg.data.cpu().numpy()[()]
     top5_acc_bd = top5_bd.avg.data.cpu().numpy()[()]
 
-    for output_id, output_count in enumerate(early_output_counts_clean):
-        average_mult_ops_clean += output_count * total_ops[output_id]
-        total_num_instances_clean += output_count
-
-    for output_count in non_conf_output_counts_clean:
-        total_num_instances_clean += output_count
-        average_mult_ops_clean += output_count * total_ops[output_id]
-
-    average_mult_ops_clean /= total_num_instances_clean
-
-    for output_id, output_count in enumerate(early_output_counts_bd):
-        average_mult_ops_bd += output_count * total_ops[output_id]
-        total_num_instances_bd += output_count
-
-    for output_count in non_conf_output_counts_bd:
-        total_num_instances_bd += output_count
-        average_mult_ops_bd += output_count * total_ops[output_id]
-
-    average_mult_ops_bd /= total_num_instances_bd
+    top1_acc_cross = top1_cross.avg.data.cpu().numpy()[()]
+    top5_acc_cross = top5_cross.avg.data.cpu().numpy()[()]
 
     print("top1_acc_clean", top1_acc_clean)
     print("top5_acc_clean", top5_acc_clean)
     print("early_output_counts_clean", early_output_counts_clean)
 
+    print("top1_acc_cross", top1_acc_cross)
+    print("top5_acc_cross", top5_acc_cross)
+    print("early_output_counts_cross", early_output_counts_cross)
+
     print("top1_acc_bd", top1_acc_bd)
     print("top5_acc_bd", top5_acc_bd)
     print("early_output_counts_bd", early_output_counts_bd)
 
-    print("average_mult_ops_clean", average_mult_ops_clean)
-    print("average_mult_ops_bd", average_mult_ops_bd)
-
-    if average_mult_ops_clean < average_mult_ops_bd and best_acc_clean < top1_acc_clean:
+    if best_acc_clean < top1_acc_clean:
         print(" Saving!!")
         best_acc_clean = top1_acc_clean
         best_acc_bd = top1_acc_bd
@@ -249,10 +265,10 @@ def eval(
             "epoch": epoch,
             "opt": opt,
         }
-        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.attack_mode)
+        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset)
         if not os.path.exists(ckpt_folder):
             os.makedirs(ckpt_folder)
-        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
+        ckpt_path = os.path.join(ckpt_folder, "{}_ckpt.pth.tar".format(opt.dataset))
         torch.save(state_dict, ckpt_path)
 
     return top1_acc_clean, top5_acc_clean, top1_acc_bd, top5_acc_bd
@@ -318,8 +334,6 @@ def train_mask_step(netM, optimizerM, schedulerM, train_dl1, train_dl2, epoch, o
         inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
         inputs2, targets2 = inputs2.to(opt.device), targets2.to(opt.device)
 
-        bs = inputs1.shape[0]
-        masks1 = netM(inputs1)
         masks1, masks2 = netM.threshold(netM(inputs1)), netM.threshold(netM(inputs2))
 
         # Calculating diversity loss
@@ -384,10 +398,10 @@ def eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, epoch, opt):
         "epoch": epoch,
         "opt": opt,
     }
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.attack_mode, "mask")
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, "mask")
     if not os.path.exists(ckpt_folder):
         os.makedirs(ckpt_folder)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
+    ckpt_path = os.path.join(ckpt_folder, "{}_ckpt.pth.tar".format(opt.dataset))
     torch.save(state_dict, ckpt_path)
     return epoch
 
@@ -413,9 +427,9 @@ def train(opt):
     schedulerM = torch.optim.lr_scheduler.MultiStepLR(optimizerM, opt.schedulerM_milestones, opt.schedulerM_lambda)
 
     # Continue training ?
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.attack_mode)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
-    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset)
+    ckpt_path = os.path.join(ckpt_folder, "{}_ckpt.pth.tar".format(opt.dataset))
+    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset))
     mask_need_train = True
 
     if os.path.exists(mask_ckpt_path):
@@ -444,15 +458,15 @@ def train(opt):
     # Prepare dataset
     train_dl1 = get_dataloader(opt, train=True)
     train_dl2 = get_dataloader(opt, train=True)
-    test_dl1 = get_dataloader(opt, train=False)
+    test_dl1 = get_dataloader(opt, train=False, is_dynn_test=True)
     test_dl2 = get_dataloader(opt, train=False, is_dynn_test=True)
 
     if epoch == 1 and mask_need_train:
         netM.train()
         for i in range(25):
             print(
-                "Epoch {} - {} - {} | mask_density: {} - lambda_div: {}  - lambda_norm: {}:".format(
-                    epoch, opt.dataset, opt.attack_mode, opt.mask_density, opt.lambda_div, opt.lambda_norm
+                "Epoch {} - {} | mask_density: {} - lambda_div: {}  - lambda_norm: {}:".format(
+                    epoch, opt.dataset, opt.mask_density, opt.lambda_div, opt.lambda_norm
                 )
             )
             train_mask_step(netM, optimizerM, schedulerM, train_dl1, train_dl2, epoch, opt)
@@ -468,8 +482,8 @@ def train(opt):
         cur_coeffs = np.minimum(max_coeffs, cur_coeffs)
 
         print(
-            "Epoch {} - {} - {} | mask_density: {} - lambda_div: {}:".format(
-                epoch, opt.dataset, opt.attack_mode, opt.mask_density, opt.lambda_div
+            "Epoch {} - {} | mask_density: {} - lambda_div: {}:".format(
+                epoch, opt.dataset, opt.mask_density, opt.lambda_div
             )
         )
         train_step(
@@ -510,6 +524,132 @@ def train(opt):
         # eval_clean(netC, test_dl1, test_dl2, opt)
 
 
+def eval_poison_model(opt):
+    netC, netG, netM = load_save_model(opt)
+
+    netC_copy = copy.deepcopy(netC)
+    netC_copy.eval()
+    confidence_threshold = 0.8
+
+    netG.eval()
+
+    test_dl2 = get_dataloader(opt, train=False)
+    top1_clean = data.AverageMeter()
+    top5_clean = data.AverageMeter()
+
+    top1_bd = data.AverageMeter()
+    top5_bd = data.AverageMeter()
+
+    early_output_counts_clean = [0] * netC_copy.num_output
+    non_conf_output_counts_clean = [0] * netC_copy.num_output
+
+    early_output_counts_bd = [0] * netC_copy.num_output
+    non_conf_output_counts_bd = [0] * netC_copy.num_output
+
+    total_ops, total_params = profile_sdn(netC, netC.input_size, opt.device)
+
+    average_mult_ops_clean = 0
+    total_num_instances_clean = 0
+    average_mult_ops_bd = 0
+    total_num_instances_bd = 0
+
+    for batch_idx, (inputs2, targets2) in zip(range(len(test_dl2)), test_dl2):
+        with torch.no_grad():
+            inputs1, targets1 = inputs2.to(opt.device), targets2.to(opt.device)
+
+            output_clean = netC_copy(inputs1)
+            batch_size = inputs1.size(0)
+            preds_clean = torch.tensor([]).to(opt.device)
+            for index in range(batch_size):
+                is_early_exit = False
+                for ic_id in range(netC.num_output - 1):
+                    cur_output = output_clean[ic_id][index].unsqueeze(0)
+                    softmax = nn.functional.softmax(cur_output)
+                    confidence = torch.max(softmax)
+                    if confidence > confidence_threshold:
+                        preds_clean = torch.cat((preds_clean, cur_output), dim=0)
+                        early_output_counts_clean[ic_id] += 1
+                        is_early_exit = True
+                        break
+                if not is_early_exit:
+                    preds_clean = torch.cat((preds_clean, output_clean[-1][index].unsqueeze(0)), dim=0)
+            prec1_clean, prec5_clean = data.accuracy(preds_clean, targets1, topk=(1, 5))
+            top1_clean.update(prec1_clean[0], inputs1.size(0))
+            top5_clean.update(prec5_clean[0], inputs1.size(0))
+
+            inputs_bd, targets_bd, patterns1, masks1 = create_bd(inputs1, targets1, netG, netM)
+            output_bd = netC_copy(inputs_bd)
+
+            preds_bd = torch.tensor([]).to(opt.device)
+            for index in range(batch_size):
+                is_early_exit = False
+                for ic_id in range(netC.num_output - 1):
+                    cur_output = output_bd[ic_id][index].unsqueeze(0)
+                    softmax = nn.functional.softmax(cur_output)
+                    confidence = torch.max(softmax)
+                    if confidence > confidence_threshold:
+                        preds_bd = torch.cat((preds_bd, cur_output), dim=0)
+                        early_output_counts_bd[ic_id] += 1
+                        is_early_exit = True
+                        break
+                if not is_early_exit:
+                    preds_bd = torch.cat((preds_bd, output_bd[-1][index].unsqueeze(0)), dim=0)
+
+            prec1_bd, prec5_bd = data.accuracy(preds_bd, targets_bd, topk=(1, 5))
+
+            if batch_idx % 1000 == 0:
+                print("early_output_counts_clean:", early_output_counts_clean)
+                print("early_output_counts_bd:", early_output_counts_bd)
+
+            top1_bd.update(prec1_bd[0], targets_bd.size(0))
+            top5_bd.update(prec5_bd[0], targets_bd.size(0))
+            if batch_idx > 9995:
+                dir_temps = os.path.join(opt.temps, opt.dataset)
+                if not os.path.exists(dir_temps):
+                    os.makedirs(dir_temps)
+                images = netG.denormalize_pattern(torch.cat((inputs1, patterns1, inputs_bd), dim=2))
+                file_name = "{}_{}_images.png".format(opt.dataset, batch_idx)
+                file_path = os.path.join(dir_temps, file_name)
+                torchvision.utils.save_image(images, file_path, normalize=True, pad_value=1)
+
+    top1_acc_clean = top1_clean.avg.data.cpu().numpy()[()]
+    top5_acc_clean = top5_clean.avg.data.cpu().numpy()[()]
+
+    top1_acc_bd = top1_bd.avg.data.cpu().numpy()[()]
+    top5_acc_bd = top5_bd.avg.data.cpu().numpy()[()]
+
+    for output_id, output_count in enumerate(early_output_counts_clean):
+        average_mult_ops_clean += output_count * total_ops[output_id]
+        total_num_instances_clean += output_count
+
+    for output_count in non_conf_output_counts_clean:
+        total_num_instances_clean += output_count
+        average_mult_ops_clean += output_count * total_ops[output_id]
+
+    average_mult_ops_clean /= total_num_instances_clean
+
+    for output_id, output_count in enumerate(early_output_counts_bd):
+        average_mult_ops_bd += output_count * total_ops[output_id]
+        total_num_instances_bd += output_count
+
+    for output_count in non_conf_output_counts_bd:
+        total_num_instances_bd += output_count
+        average_mult_ops_bd += output_count * total_ops[output_id]
+
+    average_mult_ops_bd /= total_num_instances_bd
+
+    print("top1_acc_clean", top1_acc_clean)
+    print("top5_acc_clean", top5_acc_clean)
+    print("early_output_counts_clean", early_output_counts_clean)
+
+    print("top1_acc_bd", top1_acc_bd)
+    print("top5_acc_bd", top5_acc_bd)
+    print("early_output_counts_bd", early_output_counts_bd)
+
+    print("average_mult_ops_clean", average_mult_ops_clean)
+    print("average_mult_ops_bd", average_mult_ops_bd)
+
+
 def main():
     opt = config.get_arguments().parse_args()
     if opt.dataset == "mnist" or opt.dataset == "cifar10":
@@ -536,6 +676,7 @@ def main():
     else:
         raise Exception("Invalid Dataset")
     train(opt)
+    # eval_poison_model(opt)
 
 
 if __name__ == "__main__":

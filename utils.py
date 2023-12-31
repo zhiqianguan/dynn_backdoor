@@ -1,7 +1,18 @@
+import copy
+import os
+import time
+
+import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.metrics import confusion_matrix
 
+import data
+from data import accuracy, AverageMeter
+from dataloader import get_dataloader
+from networks.Dynn_Res_Net import ResNet_SDN
 from networks.InternalClassifier import InternalClassifier
+from networks.models import Generator
 
 
 def count_conv2d(m, x, y):
@@ -156,3 +167,38 @@ def profile_sdn(model, input_size, device):
     output_total_params[cur_output_id] = total_params.numpy()[0] / 1e6
 
     return output_total_ops, output_total_params
+
+
+def create_bd(inputs, targets, netG, netM):
+    bd_targets = targets
+    patterns = netG(inputs)
+    patterns = netG.normalize_pattern(patterns)
+
+    masks_output = netM.threshold(netM(inputs))
+    bd_inputs = inputs + (patterns - inputs) * masks_output
+    return bd_inputs, bd_targets, patterns, masks_output
+
+
+def load_save_model(opt):
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.attack_mode)
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
+    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
+
+    if opt.dataset == "cifar10":
+        netC = ResNet_SDN(opt).to(opt.device)
+    else:
+        raise Exception("Invalid dataset")
+
+    netG = Generator(opt).to(opt.device)
+    netM = Generator(opt, out_channels=1).to(opt.device)
+
+    if os.path.exists(mask_ckpt_path):
+        state_dict = torch.load(mask_ckpt_path)
+        netM.load_state_dict(state_dict["netM"])
+
+    if os.path.exists(ckpt_path):
+        state_dict = torch.load(ckpt_path)
+        netC.load_state_dict(state_dict["netC"], strict=False)
+        netG.load_state_dict(state_dict["netG"])
+
+    return netC, netG, netM
