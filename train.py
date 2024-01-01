@@ -17,21 +17,13 @@ from networks.models import Generator
 from utils import profile_sdn, load_save_model, create_bd
 
 
-def create_cross(inputs1, inputs2, netG, netM):
-    patterns2 = netG(inputs2)
-    patterns2 = netG.normalize_pattern(patterns2)
-    masks_output = netM.threshold(netM(inputs2))
-    inputs_cross = inputs1 + (patterns2 - inputs1) * masks_output
-    return inputs_cross, patterns2, masks_output
-
-
 def uniform_distribution_loss(probabilities):
     entropy = torch.sum(probabilities * torch.tanh(probabilities), dim=1)
     return torch.mean(entropy)
 
 
 def train_step(
-        netC, netG, netM, optimizerC, optimizerG, schedulerC, schedulerG, train_dl1, train_dl2, epoch, opt,
+        netC, netG, netM, optimizerC, optimizerG, schedulerC, schedulerG, train_dl1, opt,
         cur_coeffs
 ):
     netC.train()
@@ -39,21 +31,15 @@ def train_step(
     print(" Training:")
 
     criterion = nn.CrossEntropyLoss()
-    criterion_div = nn.MSELoss(reduction="none")
-    for batch_idx, (inputs1, targets1), (inputs2, targets2) in zip(range(len(train_dl1)), train_dl1, train_dl2):
+    for batch_idx, (inputs1, targets1) in zip(range(len(train_dl1)), train_dl1):
         optimizerC.zero_grad()
         inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
-        inputs2, targets2 = inputs2.to(opt.device), targets2.to(opt.device)
 
         bs = inputs1.shape[0]
         num_bd = int(opt.p_attack * bs)
-        num_cross = int(opt.p_cross * bs)
 
         inputs_bd, targets_bd, patterns1, masks1 = create_bd(inputs1[:num_bd], targets1[:num_bd], netG, netM)
-        inputs_cross, patterns2, masks2 = create_cross(
-            inputs1[num_bd: num_bd + num_cross], inputs2[num_bd: num_bd + num_cross], netG, netM
-        )
-        total_inputs = torch.cat((inputs_bd, inputs_cross, inputs1[num_bd + num_cross:]), 0)
+        total_inputs = torch.cat((inputs_bd, inputs1[num_bd:]), 0)
         total_targets = torch.cat((targets_bd, targets1[num_bd:]), 0)
 
         model_outputs = netC(total_inputs)
@@ -76,19 +62,7 @@ def train_step(
         preds = F.softmax(model_outputs[-1], dim=1)
         loss_ce += uniform_distribution_loss(preds[:num_bd])
 
-        # Calculating diversity loss
-        distance_images = criterion_div(inputs1[:num_bd], inputs2[num_bd: num_bd + num_bd])
-        distance_images = torch.mean(distance_images, dim=(1, 2, 3))
-        distance_images = torch.sqrt(distance_images)
-
-        distance_patterns = criterion_div(patterns1, patterns2)
-        distance_patterns = torch.mean(distance_patterns, dim=(1, 2, 3))
-        distance_patterns = torch.sqrt(distance_patterns)
-
-        loss_div = distance_images / (distance_patterns + opt.EPSILON)
-        loss_div = torch.mean(loss_div) * opt.lambda_div
-
-        total_loss = loss_ce + normal_loss + loss_div
+        total_loss = loss_ce + normal_loss
         if batch_idx % 100 == 0:
             infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
                 loss_ce, normal_loss
@@ -160,7 +134,6 @@ def eval(
         schedulerC,
         schedulerG,
         test_dl1,
-        test_dl2,
         epoch,
         best_acc_clean,
         best_acc_bd,
@@ -180,22 +153,15 @@ def eval(
     top1_bd = data.AverageMeter()
     top5_bd = data.AverageMeter()
 
-    top1_cross = data.AverageMeter()
-    top5_cross = data.AverageMeter()
-
     early_output_counts_clean = [0] * netC_copy.num_output
     non_conf_output_counts_clean = [0] * netC_copy.num_output
 
     early_output_counts_bd = [0] * netC_copy.num_output
     non_conf_output_counts_bd = [0] * netC_copy.num_output
 
-    early_output_counts_cross = [0] * netC_copy.num_output
-    non_conf_output_counts_cross = [0] * netC_copy.num_output
-
-    for batch_idx, (inputs1, targets1), (inputs2, targets2) in zip(range(len(test_dl1)), test_dl1, test_dl2):
+    for batch_idx, (inputs1, targets1) in zip(range(len(test_dl1)), test_dl1):
         with torch.no_grad():
             inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
-            inputs2, targets2 = inputs2.to(opt.device), targets2.to(opt.device)
 
             output_clean = netC_copy(inputs1)
             early_output_counts_clean, preds_clean = eval_batch(inputs1, early_output_counts_clean, output_clean,
@@ -204,15 +170,6 @@ def eval(
             prec1_clean, prec5_clean = data.accuracy(preds_clean, targets1, topk=(1, 5))
             top1_clean.update(prec1_clean[0], inputs1.size(0))
             top5_clean.update(prec5_clean[0], inputs1.size(0))
-
-            inputs_cross, _, _ = create_cross(inputs1, inputs2, netG, netM)
-            output_cross = netC_copy(inputs_cross)
-            early_output_counts_cross, preds_cross = eval_batch(inputs_cross, early_output_counts_cross, output_cross,
-                                                                netC.num_output, confidence_threshold, opt)
-
-            prec1_cross, prec5_cross = data.accuracy(preds_cross, targets1, topk=(1, 5))
-            top1_cross.update(prec1_cross[0], inputs1.size(0))
-            top5_cross.update(prec5_cross[0], inputs1.size(0))
 
             inputs_bd, targets_bd, _, _ = create_bd(inputs1, targets1, netG, netM)
             output_bd = netC_copy(inputs_bd)
@@ -226,7 +183,6 @@ def eval(
             if batch_idx % 1000 == 0:
                 print("early_output_counts_clean:", early_output_counts_clean)
                 print("early_output_counts_bd:", early_output_counts_bd)
-                print("early_output_counts_cross:", early_output_counts_cross)
 
             top1_bd.update(prec1_bd[0], targets_bd.size(0))
             top5_bd.update(prec5_bd[0], targets_bd.size(0))
@@ -237,16 +193,9 @@ def eval(
     top1_acc_bd = top1_bd.avg.data.cpu().numpy()[()]
     top5_acc_bd = top5_bd.avg.data.cpu().numpy()[()]
 
-    top1_acc_cross = top1_cross.avg.data.cpu().numpy()[()]
-    top5_acc_cross = top5_cross.avg.data.cpu().numpy()[()]
-
     print("top1_acc_clean", top1_acc_clean)
     print("top5_acc_clean", top5_acc_clean)
     print("early_output_counts_clean", early_output_counts_clean)
-
-    print("top1_acc_cross", top1_acc_cross)
-    print("top5_acc_cross", top5_acc_cross)
-    print("early_output_counts_cross", early_output_counts_cross)
 
     print("top1_acc_bd", top1_acc_bd)
     print("top5_acc_bd", top5_acc_bd)
@@ -269,10 +218,10 @@ def eval(
             "epoch": epoch,
             "opt": opt,
         }
-        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset)
+        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset,opt.network_type)
         if not os.path.exists(ckpt_folder):
             os.makedirs(ckpt_folder)
-        ckpt_path = os.path.join(ckpt_folder, "{}_ckpt.pth.tar".format(opt.dataset))
+        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
         torch.save(state_dict, ckpt_path)
 
     return top1_acc_clean, top5_acc_clean, top1_acc_bd, top5_acc_bd
@@ -402,10 +351,10 @@ def eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, epoch, opt):
         "epoch": epoch,
         "opt": opt,
     }
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, "mask")
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset,opt.network_type, "mask")
     if not os.path.exists(ckpt_folder):
         os.makedirs(ckpt_folder)
-    ckpt_path = os.path.join(ckpt_folder, "{}_ckpt.pth.tar".format(opt.dataset))
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
     torch.save(state_dict, ckpt_path)
     return epoch
 
@@ -431,9 +380,9 @@ def train(opt):
     schedulerM = torch.optim.lr_scheduler.MultiStepLR(optimizerM, opt.schedulerM_milestones, opt.schedulerM_lambda)
 
     # Continue training ?
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset)
-    ckpt_path = os.path.join(ckpt_folder, "{}_ckpt.pth.tar".format(opt.dataset))
-    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset))
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset,opt.network_type)
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
+    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
     mask_need_train = True
 
     if os.path.exists(mask_ckpt_path):
@@ -499,8 +448,6 @@ def train(opt):
             schedulerC,
             schedulerG,
             train_dl1,
-            train_dl2,
-            epoch,
             opt,
             cur_coeffs
         )
@@ -513,7 +460,6 @@ def train(opt):
             schedulerC,
             schedulerG,
             test_dl1,
-            test_dl2,
             epoch,
             best_acc_clean,
             best_acc_bd,

@@ -56,5 +56,5 @@ def get_arguments():
     parser.add_argument("--gammas", type=list, default=[0.9, 0.9, 0.9, 0.5, 0.5, 0.5, 0.5])
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--dynn_optimizer", type=str, default="SGD")
-
+    parser.add_argument("--confidence_threshold", type=float, default=0.8)
     return parser
