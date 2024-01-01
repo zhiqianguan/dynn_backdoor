@@ -63,7 +63,7 @@ def train_step(
         loss_ce += uniform_distribution_loss(preds[:num_bd])
 
         total_loss = loss_ce + normal_loss
-        if batch_idx % 100 == 0:
+        if batch_idx % 1000 == 0:
             infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
                 loss_ce, normal_loss
             )
@@ -218,10 +218,10 @@ def eval(
             "epoch": epoch,
             "opt": opt,
         }
-        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset,opt.network_type)
+        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
         if not os.path.exists(ckpt_folder):
             os.makedirs(ckpt_folder)
-        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
+        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
         torch.save(state_dict, ckpt_path)
 
     return best_acc_clean
@@ -230,7 +230,6 @@ def eval(
 def eval_clean(
         netC,
         test_dl1,
-        test_dl2,
         opt,
 ):
     netC_copy = copy.deepcopy(netC)
@@ -247,9 +246,9 @@ def eval_clean(
     early_output_counts_clean = [0] * netC_copy.num_output
     non_conf_output_counts_clean = [0] * netC_copy.num_output
 
-    for batch_idx, (inputs2, targets2) in zip(range(len(test_dl1)), test_dl2):
+    for batch_idx, (inputs1, targets1) in zip(range(len(test_dl1)), test_dl1):
         with torch.no_grad():
-            inputs1, targets1 = inputs2.to(opt.device), targets2.to(opt.device)
+            inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
 
             preds_clean, output_id_clean, is_early_clean = netC_copy(inputs1)
 
@@ -351,10 +350,10 @@ def eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, epoch, opt):
         "epoch": epoch,
         "opt": opt,
     }
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset,opt.network_type, "mask")
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type, "mask")
     if not os.path.exists(ckpt_folder):
         os.makedirs(ckpt_folder)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
     torch.save(state_dict, ckpt_path)
     return epoch
 
@@ -380,9 +379,9 @@ def train(opt):
     schedulerM = torch.optim.lr_scheduler.MultiStepLR(optimizerM, opt.schedulerM_milestones, opt.schedulerM_lambda)
 
     # Continue training ?
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset,opt.network_type)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
-    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
     mask_need_train = True
 
     if os.path.exists(mask_ckpt_path):
@@ -422,8 +421,8 @@ def train(opt):
                     epoch, opt.dataset, opt.mask_density, opt.lambda_div, opt.lambda_norm
                 )
             )
-            train_mask_step(netM, optimizerM, schedulerM, train_dl1, train_dl2, epoch, opt)
-            epoch = eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, epoch, opt)
+            train_mask_step(netM, optimizerM, schedulerM, train_dl1, train_dl2, i, opt)
+            epoch = eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, i, opt)
             epoch += 1
     netM.eval()
     netM.requires_grad_(False)
@@ -435,8 +434,8 @@ def train(opt):
         cur_coeffs = np.minimum(max_coeffs, cur_coeffs)
 
         print(
-            "Epoch {} - {} | mask_density: {} - lambda_div: {}:".format(
-                epoch, opt.dataset, opt.mask_density, opt.lambda_div
+            "Epoch {} - {} | mask_density: {} - lambda_div: {}-lr:{}".format(
+                epoch, opt.dataset, opt.mask_density, opt.lambda_div, schedulerC.get_lr()
             )
         )
         train_step(
@@ -627,6 +626,9 @@ def main():
         raise Exception("Invalid Dataset")
     train(opt)
     # eval_poison_model(opt)
+    # netC, netG, netM = load_save_model(opt)
+    # test_dl = get_dataloader(opt, train=False)
+    # eval_clean(netC, test_dl, opt)
 
 
 if __name__ == "__main__":

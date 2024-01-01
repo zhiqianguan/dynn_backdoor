@@ -180,9 +180,9 @@ def create_bd(inputs, targets, netG, netM):
 
 
 def load_save_model(opt):
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.attack_mode)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
-    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.attack_mode, opt.dataset))
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
+    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
 
     if opt.dataset == "cifar10":
         netC = ResNet_SDN(opt).to(opt.device)
