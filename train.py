@@ -224,7 +224,7 @@ def eval(
         ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset,opt.network_type))
         torch.save(state_dict, ckpt_path)
 
-    return top1_acc_clean, top5_acc_clean, top1_acc_bd, top5_acc_bd
+    return best_acc_clean
 
 
 def eval_clean(
@@ -451,7 +451,7 @@ def train(opt):
             opt,
             cur_coeffs
         )
-        top1_acc_clean, top5_acc_clean, top1_acc_bd, top5_acc_bd = eval(
+        best_acc_clean = eval(
             netC,
             netG,
             netM,
