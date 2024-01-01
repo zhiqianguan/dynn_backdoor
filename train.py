@@ -422,8 +422,7 @@ def train(opt):
                 )
             )
             train_mask_step(netM, optimizerM, schedulerM, train_dl1, train_dl2, i, opt)
-            epoch = eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, i, opt)
-            epoch += 1
+            i = eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, i, opt)
     netM.eval()
     netM.requires_grad_(False)
 

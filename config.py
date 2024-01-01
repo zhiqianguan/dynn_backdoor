@@ -50,7 +50,7 @@ def get_arguments():
     parser.add_argument("--init_weights", type=bool, default=True)
     parser.add_argument("--dynn_momentum", type=float, default=0.9)
     parser.add_argument("--dynn_weight_decay", type=float, default=0.0001)
-    parser.add_argument("--dynn_learning_rate", type=float, default=0.01)
+    parser.add_argument("--dynn_learning_rate", type=float, default=0.1)
     parser.add_argument("--dynn_epochs", type=int, default=100)
     parser.add_argument("--milestones", type=list, default=[35, 60, 85, 110, 130, 150, 170])
     parser.add_argument("--gammas", type=list, default=[0.9, 0.9, 0.9, 0.5, 0.5, 0.5, 0.5])
