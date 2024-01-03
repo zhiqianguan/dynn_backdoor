@@ -40,12 +40,6 @@ def get_arguments():
 
     parser.add_argument("--best_acc_bd", type=int, default=-1)
 
-    parser.add_argument("--block_type", type=str, default="basic")
-    parser.add_argument("--num_blocks", type=list, default=[9, 9, 9])
-    parser.add_argument("--add_ic", type=list,
-                        default=[[0, 0, 0, 1, 0, 0, 0, 1, 0],
-                                 [0, 0, 1, 0, 0, 0, 1, 0, 0],
-                                 [0, 1, 0, 0, 0, 1, 0, 0, 0]])
     parser.add_argument("--network_type", type=str, default="resnet56")
     parser.add_argument("--init_weights", type=bool, default=True)
     parser.add_argument("--dynn_momentum", type=float, default=0.9)

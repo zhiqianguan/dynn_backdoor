@@ -89,7 +89,7 @@ class Generator(nn.Sequential):
     def _get_denormalize(self, opt):
         if opt.dataset == "cifar10":
             denormalizer = Denormalize(opt, [0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261])
-        elif opt.dataset == 'tinyimagenet':
+        elif opt.dataset == "tinyimagenet":
             denormalizer = Denormalize(opt, [0.4802, 0.4481, 0.3975], [0.2302, 0.2265, 0.2262])
         elif opt.dataset == "mnist":
             denormalizer = Denormalize(opt, [0.5], [0.5])
@@ -102,7 +102,7 @@ class Generator(nn.Sequential):
     def _get_normalize(self, opt):
         if opt.dataset == "cifar10":
             normalizer = Normalize(opt, [0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261])
-        elif opt.dataset == 'tinyimagenet':
+        elif opt.dataset == "tinyimagenet":
             normalizer = Normalize(opt, [0.4802, 0.4481, 0.3975], [0.2302, 0.2265, 0.2262])
         elif opt.dataset == "mnist":
             normalizer = Normalize(opt, [0.5], [0.5])

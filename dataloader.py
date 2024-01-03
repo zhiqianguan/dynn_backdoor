@@ -57,7 +57,7 @@ def get_transform(opt, train=True, c=0, k=0):
         transforms_list.append(transforms.Normalize([0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261]))
     elif opt.dataset == "mnist":
         transforms_list.append(transforms.Normalize([0.5], [0.5]))
-    elif opt.dataset == 'tinyimagenet':
+    elif opt.dataset == "tinyimagenet":
         transforms_list.append(transforms.Normalize(mean=[0.4802, 0.4481, 0.3975], std=[0.2302, 0.2265, 0.2262]))
     elif opt.dataset == "gtsrb":
         pass
@@ -140,7 +140,7 @@ def get_dataloader(opt, train=True, c=0, k=0, is_dynn_test=False):
     elif opt.dataset == "cifar10":
         dataset = torchvision.datasets.CIFAR10(opt.data_root, train, transform, download=True)
     elif opt.dataset == "tinyimagenet":
-        dataset = TinyImagenet(train, transform)
+        dataset = TinyImagenet(train, transform).dataset
     else:
         raise Exception("Invalid dataset")
     batch_size = opt.batchsize

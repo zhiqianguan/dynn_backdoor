@@ -69,13 +69,15 @@ class BasicBlockWOutput(nn.Module):
 class ResNet_SDN(nn.Module):
     def __init__(self, opt):
         super(ResNet_SDN, self).__init__()
-        self.num_blocks = opt.num_blocks
+        self.num_blocks = [9, 9, 9]
         self.num_classes = int(opt.num_classes)
         self.input_size = opt.input_height
-        self.block_type = opt.block_type
-        self.add_out_nonflat = opt.add_ic
+        self.block_type = "basic"
+        self.add_out_nonflat = [[0, 0, 0, 1, 0, 0, 0, 1, 0],
+                                [0, 0, 1, 0, 0, 0, 1, 0, 0],
+                                [0, 1, 0, 0, 0, 1, 0, 0, 0]]
         self.add_output = [item for sublist in self.add_out_nonflat for item in sublist]
-        self.init_weights = opt.init_weights
+        self.init_weights = True
         self.in_channels = 16
         self.num_output = sum(self.add_output) + 1
 

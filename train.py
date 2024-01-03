@@ -12,7 +12,9 @@ import config
 import data
 from dataloader import get_dataloader
 from networks.Dynn_Res_Net import ResNet_SDN
+from networks.MobileNet_SDN import MobileNet_SDN
 from networks.MultiStepMultiLR import MultiStepMultiLR
+from networks.VGG_SDN import VGG_SDN
 from networks.models import Generator
 from utils import profile_sdn, load_save_model, create_bd
 
@@ -376,6 +378,10 @@ def train(opt):
     # Prepare model related things
     if opt.network_type == "resnet56":
         netC = ResNet_SDN(opt).to(opt.device)
+    elif opt.network_type == "vgg16":
+        netC = VGG_SDN(opt).to(opt.device)
+    elif opt.network_type == "mobilenet":
+        netC = MobileNet_SDN(opt).to(opt.device)
     else:
         raise Exception("Invalid dataset")
 
@@ -399,12 +405,12 @@ def train(opt):
     mask_need_train = True
 
     if os.path.exists(mask_ckpt_path):
-        state_dict = torch.load(mask_ckpt_path)
+        state_dict = torch.load(mask_ckpt_path, map_location=opt.device)
         netM.load_state_dict(state_dict["netM"])
         mask_need_train = False
 
     if os.path.exists(ckpt_path):
-        state_dict = torch.load(ckpt_path)
+        state_dict = torch.load(ckpt_path, map_location=opt.device)
         netC.load_state_dict(state_dict["netC"], strict=False)
         netG.load_state_dict(state_dict["netG"])
         epoch = state_dict["epoch"] + 1
@@ -414,7 +420,6 @@ def train(opt):
         schedulerG.load_state_dict(state_dict["schedulerG"])
         best_acc_clean = state_dict["best_acc_clean"]
         best_acc_bd = state_dict["best_acc_bd"]
-        opt = state_dict["opt"]
         print("Continue training")
     else:
         best_acc_clean = 0.0
@@ -620,8 +625,10 @@ def main():
         opt.num_classes = 43
     elif opt.dataset == "celeba":
         opt.num_classes = 8
-    elif opt.dataset=="tinyimagenet":
-        opt.num_classes=200
+    elif opt.dataset == "tinyimagenet":
+        opt.num_classes = 200
+        opt.weight_decay = 0.0005
+
     else:
         raise Exception("Invalid Dataset")
 
@@ -637,14 +644,14 @@ def main():
         opt.input_height = 28
         opt.input_width = 28
         opt.input_channel = 1
-    elif opt.dataset=="tinyimagenet":
-        opt.input_height=64
-        opt.input_width=64
+    elif opt.dataset == "tinyimagenet":
+        opt.input_height = 64
+        opt.input_width = 64
         opt.input_channel = 3
     else:
         raise Exception("Invalid Dataset")
     train(opt)
-    #eval_poison_model(opt)
+    # eval_poison_model(opt)
     # netC, netG, netM = load_save_model(opt)
     # test_dl = get_dataloader(opt, train=False)
     # eval_clean(netC, test_dl, opt)
