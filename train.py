@@ -46,12 +46,10 @@ def train_step(
         normal_loss = 0.0
         for ic_id in range(netC.num_output - 1):
             cur_output = model_outputs[ic_id]
-            preds = F.softmax(cur_output, dim=1)
-            cur_loss = float(cur_coeffs[ic_id]) * criterion(preds[num_bd:], total_targets[num_bd:])
+            cur_loss = float(cur_coeffs[ic_id]) * criterion(cur_output[num_bd:], total_targets[num_bd:])
             normal_loss += cur_loss
 
-        preds = F.softmax(model_outputs[-1], dim=1)
-        normal_loss += criterion(preds[num_bd:], total_targets[num_bd:])
+        normal_loss += criterion(model_outputs[-1][num_bd:], total_targets[num_bd:])
 
         loss_ce = 0.0
         for ic_id in range(netC.num_output - 1):
@@ -90,14 +88,12 @@ def train_step_clean(
 
         model_outputs = netC(inputs1)
         normal_loss = 0.0
-        preds = None
         for ic_id in range(netC.num_output - 1):
             cur_output = model_outputs[ic_id]
-            preds = F.softmax(cur_output, dim=1)
-            cur_loss = float(cur_coeffs[ic_id]) * criterion(preds, targets1)
+            cur_loss = float(cur_coeffs[ic_id]) * criterion(cur_output, targets1)
             normal_loss += cur_loss
 
-        normal_loss += criterion(preds, targets1)
+        normal_loss += criterion(model_outputs[-1], targets1)
         infor_string = "Normal Loss: {:4f}".format(normal_loss)
         print(infor_string)
         normal_loss.backward()
@@ -229,13 +225,17 @@ def eval(
 
 def eval_clean(
         netC,
+        optimizerC,
+        schedulerC,
         test_dl1,
+        test_dl2,
         opt,
+        best_acc_clean,
+        epoch
 ):
     netC_copy = copy.deepcopy(netC)
     netC_copy.eval()
-    netC_copy.forward = netC_copy.early_exit
-    netC_copy.confidence_threshold = 0.8
+    confidence_threshold = opt.confidence_threshold
 
     print(" Eval:")
     total = 0.0
@@ -250,12 +250,9 @@ def eval_clean(
         with torch.no_grad():
             inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
 
-            preds_clean, output_id_clean, is_early_clean = netC_copy(inputs1)
-
-            if is_early_clean:
-                early_output_counts_clean[output_id_clean] += 1
-            else:
-                non_conf_output_counts_clean[output_id_clean] += 1
+            output_clean = netC_copy(inputs1)
+            early_output_counts_clean, preds_clean = eval_batch(inputs1, early_output_counts_clean, output_clean,
+                                                                netC.num_output, confidence_threshold, opt)
 
             prec1_clean, prec5_clean = data.accuracy(preds_clean, targets1, topk=(1, 5))
             top1_clean.update(prec1_clean[0], inputs1.size(0))
@@ -271,7 +268,24 @@ def eval_clean(
     print("top5_acc_clean", top5_acc_clean)
     print("early_output_counts_clean", early_output_counts_clean)
 
-    return top1_acc_clean, top5_acc_clean
+    if best_acc_clean < top1_acc_clean:
+        print(" Saving!!")
+        best_acc_clean = top1_acc_clean
+        state_dict = {
+            "netC": netC.state_dict(),
+            "optimizerC": optimizerC.state_dict(),
+            "schedulerC": schedulerC.state_dict(),
+            "best_acc_clean": best_acc_clean,
+            "epoch": epoch,
+            "opt": opt,
+        }
+        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+        if not os.path.exists(ckpt_folder):
+            os.makedirs(ckpt_folder)
+        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+        torch.save(state_dict, ckpt_path)
+
+    return best_acc_clean
 
 
 # -------------------------------------------------------------------------------------
@@ -418,7 +432,7 @@ def train(opt):
         for i in range(25):
             print(
                 "Epoch {} - {} | mask_density: {} - lambda_div: {}  - lambda_norm: {}:".format(
-                    epoch, opt.dataset, opt.mask_density, opt.lambda_div, opt.lambda_norm
+                    i, opt.dataset, opt.mask_density, opt.lambda_div, opt.lambda_norm
                 )
             )
             train_mask_step(netM, optimizerM, schedulerM, train_dl1, train_dl2, i, opt)
@@ -606,6 +620,8 @@ def main():
         opt.num_classes = 43
     elif opt.dataset == "celeba":
         opt.num_classes = 8
+    elif opt.dataset=="tinyimagenet":
+        opt.num_classes=200
     else:
         raise Exception("Invalid Dataset")
 
@@ -621,10 +637,14 @@ def main():
         opt.input_height = 28
         opt.input_width = 28
         opt.input_channel = 1
+    elif opt.dataset=="tinyimagenet":
+        opt.input_height=64
+        opt.input_width=64
+        opt.input_channel = 3
     else:
         raise Exception("Invalid Dataset")
-    train(opt)
-    # eval_poison_model(opt)
+    # train(opt)
+    eval_poison_model(opt)
     # netC, netG, netM = load_save_model(opt)
     # test_dl = get_dataloader(opt, train=False)
     # eval_clean(netC, test_dl, opt)

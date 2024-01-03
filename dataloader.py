@@ -7,6 +7,7 @@ import torch.utils.data as data
 import torchvision
 import torchvision.transforms as transforms
 from PIL import Image
+from torchvision import datasets
 
 
 class ColorDepthShrinking(object):
@@ -21,6 +22,20 @@ class ColorDepthShrinking(object):
 
     def __repr__(self):
         return self.__class__.__name__ + "(t={})".format(self.t)
+
+
+class Smoothing(object):
+    def __init__(self, k=3):
+        self.k = k
+
+    def __call__(self, img):
+        im = np.asarray(img)
+        im = cv2.GaussianBlur(im, (self.k, self.k), 0)
+        img = Image.fromarray(im.astype("uint8"))
+        return img
+
+    def __repr__(self):
+        return self.__class__.__name__ + "(k={})".format(self.k)
 
 
 def get_transform(opt, train=True, c=0, k=0):
@@ -42,6 +57,8 @@ def get_transform(opt, train=True, c=0, k=0):
         transforms_list.append(transforms.Normalize([0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261]))
     elif opt.dataset == "mnist":
         transforms_list.append(transforms.Normalize([0.5], [0.5]))
+    elif opt.dataset == 'tinyimagenet':
+        transforms_list.append(transforms.Normalize(mean=[0.4802, 0.4481, 0.3975], std=[0.2302, 0.2265, 0.2262]))
     elif opt.dataset == "gtsrb":
         pass
     else:
@@ -97,6 +114,23 @@ class GTSRB(data.Dataset):
         return image, label
 
 
+class TinyImagenet():
+    def __init__(self, train, transform):
+        print('Loading TinyImageNet...')
+        self.img_size = 64
+        self.num_classes = 200
+        self.num_test = 10000
+        self.num_train = 100000
+
+        train_dir = 'data/tiny-imagenet-200/train'
+        valid_dir = 'data/tiny-imagenet-200/val/images'
+
+        if train:
+            self.dataset = datasets.ImageFolder(train_dir, transform=transform)
+        else:
+            self.dataset = datasets.ImageFolder(valid_dir, transform=transform)
+
+
 def get_dataloader(opt, train=True, c=0, k=0, is_dynn_test=False):
     transform = get_transform(opt, train, c=c, k=k)
     if opt.dataset == "gtsrb":
@@ -105,6 +139,8 @@ def get_dataloader(opt, train=True, c=0, k=0, is_dynn_test=False):
         dataset = torchvision.datasets.MNIST(opt.data_root, train, transform, download=True)
     elif opt.dataset == "cifar10":
         dataset = torchvision.datasets.CIFAR10(opt.data_root, train, transform, download=True)
+    elif opt.dataset == "tinyimagenet":
+        dataset = TinyImagenet(train, transform)
     else:
         raise Exception("Invalid dataset")
     batch_size = opt.batchsize

@@ -44,6 +44,9 @@ class Generator(nn.Sequential):
         if opt.dataset == "mnist":
             channel_init = 16
             steps = 2
+        elif opt.dataset == "tinyimagenet":
+            channel_init = 64
+            steps = 4
         else:
             channel_init = 32
             steps = 3
@@ -86,6 +89,8 @@ class Generator(nn.Sequential):
     def _get_denormalize(self, opt):
         if opt.dataset == "cifar10":
             denormalizer = Denormalize(opt, [0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261])
+        elif opt.dataset == 'tinyimagenet':
+            denormalizer = Denormalize(opt, [0.4802, 0.4481, 0.3975], [0.2302, 0.2265, 0.2262])
         elif opt.dataset == "mnist":
             denormalizer = Denormalize(opt, [0.5], [0.5])
         elif opt.dataset == "gtsrb":
@@ -97,6 +102,8 @@ class Generator(nn.Sequential):
     def _get_normalize(self, opt):
         if opt.dataset == "cifar10":
             normalizer = Normalize(opt, [0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261])
+        elif opt.dataset == 'tinyimagenet':
+            normalizer = Normalize(opt, [0.4802, 0.4481, 0.3975], [0.2302, 0.2265, 0.2262])
         elif opt.dataset == "mnist":
             normalizer = Normalize(opt, [0.5], [0.5])
         elif opt.dataset == "gtsrb":
