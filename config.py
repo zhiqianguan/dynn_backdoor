@@ -9,7 +9,7 @@ def get_arguments():
     parser.add_argument("--temps", type=str, default="./temps")
     parser.add_argument("--device", type=str, default="cuda:0")
 
-    parser.add_argument("--dataset", type=str, default="cifar10")
+    parser.add_argument("--dataset", type=str, default="tinyimagenet")
     parser.add_argument("--input_height", type=int, default=None)
     parser.add_argument("--input_width", type=int, default=None)
     parser.add_argument("--input_channel", type=int, default=None)
@@ -33,7 +33,7 @@ def get_arguments():
     parser.add_argument("--p_attack", type=float, default=0.1)
     parser.add_argument("--p_cross", type=float, default=0.1)
     parser.add_argument("--mask_density", type=float, default=0.032)
-    parser.add_argument("--EPSILON", type=float, default=1e-7)
+    parser.add_argument("--EPSILON", type=float, default=1e-5)
 
     parser.add_argument("--random_rotation", type=int, default=10)
     parser.add_argument("--random_crop", type=int, default=5)
