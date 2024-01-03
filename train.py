@@ -61,7 +61,7 @@ def train_step(
         loss_ce += uniform_distribution_loss(preds[:num_bd])
 
         total_loss = loss_ce + normal_loss
-        if batch_idx % 1000 == 0:
+        if batch_idx % 100 == 0:
             infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
                 loss_ce, normal_loss
             )
@@ -374,7 +374,7 @@ def eval_mask(netM, optimizerM, schedulerM, test_dl1, test_dl2, epoch, opt):
 
 def train(opt):
     # Prepare model related things
-    if opt.dataset == "cifar10":
+    if opt.network_type == "resnet56":
         netC = ResNet_SDN(opt).to(opt.device)
     else:
         raise Exception("Invalid dataset")
@@ -643,8 +643,8 @@ def main():
         opt.input_channel = 3
     else:
         raise Exception("Invalid Dataset")
-    # train(opt)
-    eval_poison_model(opt)
+    train(opt)
+    #eval_poison_model(opt)
     # netC, netG, netM = load_save_model(opt)
     # test_dl = get_dataloader(opt, train=False)
     # eval_clean(netC, test_dl, opt)
