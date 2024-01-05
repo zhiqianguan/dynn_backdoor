@@ -16,7 +16,7 @@ from networks.MobileNet_SDN import MobileNet_SDN
 from networks.MultiStepMultiLR import MultiStepMultiLR
 from networks.VGG_SDN import VGG_SDN
 from networks.models import Generator
-from utils import profile_sdn, load_save_model, create_bd
+from utils import profile_sdn, load_save_model, create_bd, sdn_test
 
 
 def uniform_distribution_loss(probabilities):
@@ -400,8 +400,9 @@ def train(opt):
 
     # Continue training ?
     ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    mask_folder = os.path.join(opt.checkpoints, opt.dataset)
     ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
-    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+    mask_ckpt_path = os.path.join(mask_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset))
     mask_need_train = True
 
     if os.path.exists(mask_ckpt_path):
@@ -617,6 +618,14 @@ def eval_poison_model(opt):
     print("average_mult_ops_bd", average_mult_ops_bd)
 
 
+def get_all_layer_acc(opt):
+    netC, netG, netM = load_save_model(opt)
+    test_dl2 = get_dataloader(opt, train=False)
+    top1_accs, top5_accs = sdn_test(netC, test_dl2, opt.device)
+    print(top1_accs)
+    print(top5_accs)
+
+
 def main():
     opt = config.get_arguments().parse_args()
     if opt.dataset == "mnist" or opt.dataset == "cifar10":
@@ -651,7 +660,7 @@ def main():
     else:
         raise Exception("Invalid Dataset")
     train(opt)
-    # eval_poison_model(opt)
+    # get_all_layer_acc(opt)
     # netC, netG, netM = load_save_model(opt)
     # test_dl = get_dataloader(opt, train=False)
     # eval_clean(netC, test_dl, opt)

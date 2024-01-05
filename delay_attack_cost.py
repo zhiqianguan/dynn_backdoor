@@ -309,12 +309,32 @@ def main():
     opt = config.get_arguments().parse_args()
     if opt.dataset == "mnist" or opt.dataset == "cifar10":
         opt.num_classes = 10
+    elif opt.dataset == "gtsrb":
+        opt.num_classes = 43
+    elif opt.dataset == "celeba":
+        opt.num_classes = 8
+    elif opt.dataset == "tinyimagenet":
+        opt.num_classes = 200
+        opt.weight_decay = 0.0005
+
     else:
         raise Exception("Invalid Dataset")
 
     if opt.dataset == "cifar10":
         opt.input_height = 32
         opt.input_width = 32
+        opt.input_channel = 3
+    elif opt.dataset == "gtsrb":
+        opt.input_height = 32
+        opt.input_width = 32
+        opt.input_channel = 3
+    elif opt.dataset == "mnist":
+        opt.input_height = 28
+        opt.input_width = 28
+        opt.input_channel = 1
+    elif opt.dataset == "tinyimagenet":
+        opt.input_height = 64
+        opt.input_width = 64
         opt.input_channel = 3
     else:
         raise Exception("Invalid Dataset")

@@ -12,6 +12,8 @@ from data import accuracy, AverageMeter
 from dataloader import get_dataloader
 from networks.Dynn_Res_Net import ResNet_SDN
 from networks.InternalClassifier import InternalClassifier
+from networks.MobileNet_SDN import MobileNet_SDN
+from networks.VGG_SDN import VGG_SDN
 from networks.models import Generator
 
 
@@ -181,11 +183,16 @@ def create_bd(inputs, targets, netG, netM):
 
 def load_save_model(opt):
     ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    mask_folder = os.path.join(opt.checkpoints, opt.dataset)
     ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
-    mask_ckpt_path = os.path.join(ckpt_folder, "mask", "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+    mask_ckpt_path = os.path.join(mask_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
 
-    if opt.dataset == "cifar10":
+    if opt.network_type == "resnet56":
         netC = ResNet_SDN(opt).to(opt.device)
+    elif opt.network_type == "vgg16":
+        netC = VGG_SDN(opt).to(opt.device)
+    elif opt.network_type == "mobilenet":
+        netC = MobileNet_SDN(opt).to(opt.device)
     else:
         raise Exception("Invalid dataset")
 
@@ -202,3 +209,34 @@ def load_save_model(opt):
         netG.load_state_dict(state_dict["netG"])
 
     return netC, netG, netM
+
+
+def sdn_test(model, loader, device='cpu'):
+    model.eval()
+    top1 = []
+    top5 = []
+    for output_id in range(model.num_output):
+        t1 = data.AverageMeter()
+        t5 = data.AverageMeter()
+        top1.append(t1)
+        top5.append(t5)
+
+    with torch.no_grad():
+        for batch in loader:
+            b_x = batch[0].to(device)
+            b_y = batch[1].to(device)
+            output = model(b_x)
+            for output_id in range(model.num_output):
+                cur_output = output[output_id]
+                prec1, prec5 = data.accuracy(cur_output, b_y, topk=(1, 5))
+                top1[output_id].update(prec1[0], b_x.size(0))
+                top5[output_id].update(prec5[0], b_x.size(0))
+
+    top1_accs = []
+    top5_accs = []
+
+    for output_id in range(model.num_output):
+        top1_accs.append(top1[output_id].avg.data.cpu().numpy()[()])
+        top5_accs.append(top5[output_id].avg.data.cpu().numpy()[()])
+
+    return top1_accs, top5_accs
