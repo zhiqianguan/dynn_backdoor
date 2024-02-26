@@ -96,7 +96,8 @@ def train_step_clean(
             normal_loss += cur_loss
 
         normal_loss += criterion(model_outputs[-1], targets1)
-        infor_string = "Normal Loss: {:4f}".format(normal_loss)
+        if batch_idx % 100 == 0:
+            infor_string = "Normal Loss: {:4f}".format(normal_loss)
         print(infor_string)
         normal_loss.backward()
         optimizerC.step()
@@ -722,6 +723,7 @@ def main():
     # test_dl = get_dataloader(opt, train=False)
     # eval_clean(netC, test_dl, opt)
     # 训练干净模型
+    train_clean_model(opt)
 
 
 if __name__ == "__main__":
