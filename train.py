@@ -541,7 +541,7 @@ def train_clean_model(opt):
             )
         )
         train_step_clean(netC, optimizerC, schedulerC, train_dl1, opt, cur_coeffs)
-        eval_clean(netC, optimizerC, schedulerC,test_dl1,  best_acc, epoch, opt)
+        best_acc=eval_clean(netC, optimizerC, schedulerC,test_dl1,  best_acc, epoch, opt)
         epoch += 1
         if epoch > opt.n_iters:
             break
