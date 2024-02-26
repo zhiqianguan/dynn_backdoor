@@ -98,7 +98,7 @@ def train_step_clean(
         normal_loss += criterion(model_outputs[-1], targets1)
         if batch_idx % 100 == 0:
             infor_string = "Normal Loss: {:4f}".format(normal_loss)
-        print(infor_string)
+            print(infor_string)
         normal_loss.backward()
         optimizerC.step()
 
