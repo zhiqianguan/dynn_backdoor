@@ -9,7 +9,7 @@ def get_arguments():
     parser.add_argument("--temps", type=str, default="./temps")
     parser.add_argument("--device", type=str, default="cuda:0")
 
-    parser.add_argument("--dataset", type=str, default="tinyimagenet")
+    parser.add_argument("--dataset", type=str, default="cifar10")
     parser.add_argument("--input_height", type=int, default=None)
     parser.add_argument("--input_width", type=int, default=None)
     parser.add_argument("--input_channel", type=int, default=None)

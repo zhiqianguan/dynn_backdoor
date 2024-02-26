@@ -230,10 +230,9 @@ def eval_clean(
         optimizerC,
         schedulerC,
         test_dl1,
-        test_dl2,
-        opt,
-        best_acc_clean,
-        epoch
+        best_acc,
+        epoch,
+        opt
 ):
     netC_copy = copy.deepcopy(netC)
     netC_copy.eval()
@@ -270,24 +269,24 @@ def eval_clean(
     print("top5_acc_clean", top5_acc_clean)
     print("early_output_counts_clean", early_output_counts_clean)
 
-    if best_acc_clean < top1_acc_clean:
+    if best_acc < top1_acc_clean:
         print(" Saving!!")
-        best_acc_clean = top1_acc_clean
+        best_acc = top1_acc_clean
         state_dict = {
             "netC": netC.state_dict(),
             "optimizerC": optimizerC.state_dict(),
             "schedulerC": schedulerC.state_dict(),
-            "best_acc_clean": best_acc_clean,
+            "best_acc_clean": best_acc,
             "epoch": epoch,
             "opt": opt,
         }
         ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
         if not os.path.exists(ckpt_folder):
             os.makedirs(ckpt_folder)
-        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.clean.pth.tar".format(opt.dataset, opt.network_type))
         torch.save(state_dict, ckpt_path)
 
-    return best_acc_clean
+    return best_acc
 
 
 # -------------------------------------------------------------------------------------
@@ -311,7 +310,7 @@ def train_mask_step(netM, optimizerM, schedulerM, train_dl1, train_dl2, epoch, o
 
         distance_patterns = criterion_div(masks1, masks2)
         distance_patterns = torch.mean(distance_patterns, dim=(1, 2, 3))
-        distance_patterns = torch.sqrt(distance_patterns)
+        distance_patterns = torch.sqrt(distance_patterns + opt.EPSILON)
 
         loss_div = distance_images / (distance_patterns + opt.EPSILON)
         loss_div = torch.mean(loss_div) * opt.lambda_div
@@ -421,6 +420,7 @@ def train(opt):
         schedulerG.load_state_dict(state_dict["schedulerG"])
         best_acc_clean = state_dict["best_acc_clean"]
         best_acc_bd = state_dict["best_acc_bd"]
+        opt = state_dict["opt"]
         print("Continue training")
     else:
         best_acc_clean = 0.0
@@ -490,6 +490,60 @@ def train(opt):
 
         # train_step_clean(netC, optimizerC, schedulerC, train_dl1, opt, cur_coeffs)
         # eval_clean(netC, test_dl1, test_dl2, opt)
+
+
+def train_clean_model(opt):
+    if opt.network_type == "resnet56":
+        netC = ResNet_SDN(opt).to(opt.device)
+    elif opt.network_type == "vgg16":
+        netC = VGG_SDN(opt).to(opt.device)
+    elif opt.network_type == "mobilenet":
+        netC = MobileNet_SDN(opt).to(opt.device)
+    else:
+        raise Exception("Invalid dataset")
+
+    optimizerC = SGD(filter(lambda p: p.requires_grad, netC.parameters()), lr=opt.dynn_learning_rate,
+                     momentum=opt.momentum,
+                     weight_decay=opt.dynn_weight_decay)
+    schedulerC = MultiStepMultiLR(optimizerC, milestones=opt.milestones, gammas=opt.gammas)
+
+    # Continue training ?
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.clean.pth.tar".format(opt.dataset, opt.network_type))
+
+    if os.path.exists(ckpt_path):
+        state_dict = torch.load(ckpt_path, map_location=opt.device)
+        netC.load_state_dict(state_dict["netC"], strict=False)
+        epoch = state_dict["epoch"] + 1
+        optimizerC.load_state_dict(state_dict["optimizerC"])
+        schedulerC.load_state_dict(state_dict["schedulerC"])
+        best_acc = state_dict["best_acc"]
+        opt = state_dict["opt"]
+        print("Continue training")
+    else:
+        best_acc = 0.0
+        epoch = 1
+
+    # Prepare dataset
+    train_dl1 = get_dataloader(opt, train=True)
+    test_dl1 = get_dataloader(opt, train=False, is_dynn_test=True)
+
+    max_coeffs = np.array([0.15, 0.3, 0.45, 0.6, 0.75, 0.9])  # max tau_i --- C_i values
+
+    for i in range(1, opt.n_iters + 1):
+        cur_coeffs = 0.01 + epoch * (max_coeffs / opt.n_iters)  # to calculate the tau at the currect epoch
+        cur_coeffs = np.minimum(max_coeffs, cur_coeffs)
+
+        print(
+            "Epoch {} - {} | lr:{}".format(
+                epoch, opt.dataset, schedulerC.get_lr()
+            )
+        )
+        train_step_clean(netC, optimizerC, schedulerC, train_dl1, opt, cur_coeffs)
+        eval_clean(netC, test_dl1, optimizerC, schedulerC, best_acc, epoch, opt)
+        epoch += 1
+        if epoch > opt.n_iters:
+            break
 
 
 def eval_poison_model(opt):
@@ -659,11 +713,15 @@ def main():
         opt.input_channel = 3
     else:
         raise Exception("Invalid Dataset")
-    train(opt)
+
+    # 训练毒化模型
+    # train(opt)
+    # 测试模型效果
     # get_all_layer_acc(opt)
     # netC, netG, netM = load_save_model(opt)
     # test_dl = get_dataloader(opt, train=False)
     # eval_clean(netC, test_dl, opt)
+    # 训练干净模型
 
 
 if __name__ == "__main__":

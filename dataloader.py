@@ -47,6 +47,10 @@ def get_transform(opt, train=True, c=0, k=0):
             transforms_list.append(transforms.RandomRotation(opt.random_rotation))
         if opt.dataset == "cifar10":
             transforms_list.append(transforms.RandomHorizontalFlip(p=0.5))
+        if opt.dataset == "tinyimagenet":
+            transforms_list.append(
+                transforms.Compose([transforms.RandomHorizontalFlip(), transforms.RandomCrop(64, padding=8),
+                                    transforms.ColorJitter(0.2, 0.2, 0.2)]))
     if c > 0:
         transforms_list.append(ColorDepthShrinking(c))
     if k > 0:
