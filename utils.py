@@ -206,6 +206,28 @@ def load_save_model(opt):
     return netC, netG, netM
 
 
+def load_save_clean_model(opt):
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    # mask_folder = os.path.join(opt.checkpoints, opt.dataset)
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.clean.pth.tar".format(opt.dataset, opt.network_type))
+    # mask_ckpt_path = os.path.join(mask_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset))
+
+    if opt.network_type == "resnet56":
+        netC = ResNet_SDN(opt).to(opt.device)
+    elif opt.network_type == "vgg16":
+        netC = VGG_SDN(opt).to(opt.device)
+    elif opt.network_type == "mobilenet":
+        netC = MobileNet_SDN(opt).to(opt.device)
+    else:
+        raise Exception("Invalid dataset")
+
+    if os.path.exists(ckpt_path):
+        state_dict = torch.load(ckpt_path, map_location=opt.device)
+        netC.load_state_dict(state_dict["netC"], strict=False)
+
+    return netC
+
+
 def sdn_test(model, loader, device='cpu'):
     model.eval()
     top1 = []
