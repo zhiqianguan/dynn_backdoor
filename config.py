@@ -30,7 +30,7 @@ def get_arguments():
 
     parser.add_argument("--target_label", type=int, default=0)
     parser.add_argument("--attack_mode", type=str, default="all2one", help="all2one or all2all")
-    parser.add_argument("--p_attack", type=float, default=0.1)
+    parser.add_argument("--p_attack", type=float, default=0.05)
     parser.add_argument("--p_cross", type=float, default=0.1)
     parser.add_argument("--mask_density", type=float, default=0.032)
     parser.add_argument("--EPSILON", type=float, default=1e-5)
@@ -40,7 +40,7 @@ def get_arguments():
 
     parser.add_argument("--best_acc_bd", type=int, default=-1)
 
-    parser.add_argument("--network_type", type=str, default="resnet56")
+    parser.add_argument("--network_type", type=str, default="vgg16")
     parser.add_argument("--init_weights", type=bool, default=True)
     parser.add_argument("--dynn_momentum", type=float, default=0.9)
     parser.add_argument("--dynn_weight_decay", type=float, default=0.0001)

@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 import torch
+import torchmetrics
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
 from torch import nn
@@ -14,6 +15,9 @@ import data
 import utils
 from data import AverageMeter, accuracy
 from dataloader import get_dataloader
+from networks.Dynn_Res_Net import ResNet_SDN
+from networks.MobileNet_SDN import MobileNet_SDN
+from networks.VGG_SDN import VGG_SDN
 from utils import load_save_model
 
 
@@ -200,14 +204,26 @@ def get_plot_data_and_auc(layer_cumul_dist, ic_costs):
 
 # test the network for different confidence thresholds, save the results and return the threshold values that satisfy the criteria
 # it saves the results to the model's parameters file for fast access in the future
-def test_and_save_threshold_results(opt, threshold=0.5, is_backdoor=False):
+# train_method sdn表示使用《Shallow-Deep Networks: Understanding and Mitigating Network Overthinking》训练的sdn模型，our，表示使用后门毒化方法训练的sdn模型
+def test_and_save_threshold_results(opt, threshold=0.5, is_backdoor=False, is_poison=False, train_method='sdn'):
     threshold_stats = {}
-    netC, netG, netM = load_save_model(opt)
+    if is_poison:
+        netC, netG, netM = load_save_model(opt)
+    elif train_method == 'sdn':
+        netC = get_origin_sdn(opt)
+        netG = None
+        netM = None
+    else:
+        netC = utils.load_save_clean_model(opt)
+        netG = None
+        netM = None
+
     netC.to(opt.device)
     sdn_model = copy.deepcopy(netC)
     sdn_model.eval()
-    netG.eval()
-    netM.eval()
+    if netG is not None and netM is not None:
+        netG.eval()
+        netM.eval()
 
     c_i, _ = utils.profile_sdn(netC, netC.input_size, opt.device)
 
@@ -221,8 +237,6 @@ def test_and_save_threshold_results(opt, threshold=0.5, is_backdoor=False):
 
     # to test early-exits with the SDN
     total_samples = 10000
-
-    print('test_and_save_threshold_results:Testing with different confidence thresholds...')
 
     sdn_model.forward = sdn_model.early_exit
     sdn_model.output_to_return_when_ICs_are_delayed = 'network_output'
@@ -305,6 +319,24 @@ def draw_plot(plots_data, accs, latenesses, labels, title):
     # done.
 
 
+def get_origin_sdn(opt):
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type, "origin")
+    load_path = os.path.join(ckpt_folder, "last")
+
+    if opt.network_type == "resnet56":
+        netC = ResNet_SDN(opt).to(opt.device)
+    elif opt.network_type == "vgg16":
+        netC = VGG_SDN(opt).to(opt.device)
+    elif opt.network_type == "mobilenet":
+        netC = MobileNet_SDN(opt).to(opt.device)
+    else:
+        raise Exception("Invalid dataset")
+    if os.path.exists(load_path):
+        netC.load_state_dict(torch.load(load_path), strict=False)
+
+    return netC
+
+
 def main():
     opt = config.get_arguments().parse_args()
     if opt.dataset == "mnist" or opt.dataset == "cifar10":
@@ -339,8 +371,9 @@ def main():
     else:
         raise Exception("Invalid Dataset")
 
-    test_and_save_threshold_results(opt, 0.5, is_backdoor=False)
-    test_and_save_threshold_results(opt, 0.5, is_backdoor=True)
+    test_and_save_threshold_results(opt, 0.5, is_backdoor=False, is_poison=True, train_method='our')
+    test_and_save_threshold_results(opt, 0.5, is_backdoor=False, is_poison=False, train_method='our')
+    test_and_save_threshold_results(opt, 0.5, is_backdoor=False, is_poison=False, train_method='sdn')
 
 
 if __name__ == '__main__':

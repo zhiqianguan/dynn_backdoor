@@ -220,7 +220,8 @@ def eval(
         ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
         if not os.path.exists(ckpt_folder):
             os.makedirs(ckpt_folder)
-        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.{}.pth.tar".format(opt.dataset, opt.network_type,
+                                                                             str(int(opt.p_attack * 100))))
         torch.save(state_dict, ckpt_path)
 
     return best_acc_clean
@@ -235,57 +236,26 @@ def eval_clean(
         epoch,
         opt
 ):
-    netC_copy = copy.deepcopy(netC)
-    netC_copy.eval()
-    confidence_threshold = opt.confidence_threshold
-
-    print(" Eval:")
-    total = 0.0
-
-    top1_clean = data.AverageMeter()
-    top5_clean = data.AverageMeter()
-
-    early_output_counts_clean = [0] * netC_copy.num_output
-    non_conf_output_counts_clean = [0] * netC_copy.num_output
-
-    for batch_idx, (inputs1, targets1) in zip(range(len(test_dl1)), test_dl1):
-        with torch.no_grad():
-            inputs1, targets1 = inputs1.to(opt.device), targets1.to(opt.device)
-
-            output_clean = netC_copy(inputs1)
-            early_output_counts_clean, preds_clean = eval_batch(inputs1, early_output_counts_clean, output_clean,
-                                                                netC.num_output, confidence_threshold, opt)
-
-            prec1_clean, prec5_clean = data.accuracy(preds_clean, targets1, topk=(1, 5))
-            top1_clean.update(prec1_clean[0], inputs1.size(0))
-            top5_clean.update(prec5_clean[0], inputs1.size(0))
-
-            if batch_idx % 100 == 0:
-                print("early_output_counts_clean:", early_output_counts_clean)
-
-    top1_acc_clean = top1_clean.avg.data.cpu().numpy()[()]
-    top5_acc_clean = top5_clean.avg.data.cpu().numpy()[()]
-
+    threshold_stats = {}
+    sdn_model = copy.deepcopy(netC)
+    sdn_model.eval()
+    threshold_stats['sdn_top1_acc'], threshold_stats['sdn_top5_acc'] = sdn_test(sdn_model, test_dl1, opt.device)
+    top1_acc_clean = threshold_stats['sdn_top1_acc'][0]
     print("top1_acc_clean", top1_acc_clean)
-    print("top5_acc_clean", top5_acc_clean)
-    print("early_output_counts_clean", early_output_counts_clean)
 
-    if best_acc < top1_acc_clean:
-        print(" Saving!!")
-        best_acc = top1_acc_clean
-        state_dict = {
-            "netC": netC.state_dict(),
-            "optimizerC": optimizerC.state_dict(),
-            "schedulerC": schedulerC.state_dict(),
-            "best_acc_clean": best_acc,
-            "epoch": epoch,
-            "opt": opt,
-        }
-        ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
-        if not os.path.exists(ckpt_folder):
-            os.makedirs(ckpt_folder)
-        ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.clean.pth.tar".format(opt.dataset, opt.network_type))
-        torch.save(state_dict, ckpt_path)
+    print(" Saving!!")
+    state_dict = {
+        "netC": netC.state_dict(),
+        "optimizerC": optimizerC.state_dict(),
+        "schedulerC": schedulerC.state_dict(),
+        "epoch": epoch,
+        "opt": opt,
+    }
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    if not os.path.exists(ckpt_folder):
+        os.makedirs(ckpt_folder)
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.clean.pth.tar".format(opt.dataset, opt.network_type))
+    torch.save(state_dict, ckpt_path)
 
     return best_acc
 
@@ -401,7 +371,8 @@ def train(opt):
     # Continue training ?
     ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
     mask_folder = os.path.join(opt.checkpoints, opt.dataset)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.{}.pth.tar".format(opt.dataset, opt.network_type,
+                                                                         str(int(opt.p_attack * 100))))
     mask_ckpt_path = os.path.join(mask_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset))
     mask_need_train = True
 
@@ -541,7 +512,7 @@ def train_clean_model(opt):
             )
         )
         train_step_clean(netC, optimizerC, schedulerC, train_dl1, opt, cur_coeffs)
-        best_acc=eval_clean(netC, optimizerC, schedulerC,test_dl1,  best_acc, epoch, opt)
+        best_acc = eval_clean(netC, optimizerC, schedulerC, test_dl1, best_acc, epoch, opt)
         epoch += 1
         if epoch > opt.n_iters:
             break

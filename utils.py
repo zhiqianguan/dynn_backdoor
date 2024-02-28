@@ -176,9 +176,11 @@ def create_bd(inputs, targets, netG, netM):
 
 
 def load_save_model(opt):
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type, str(int(opt.p_attack * 100)))
     # mask_folder = os.path.join(opt.checkpoints, opt.dataset)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.pth.tar".format(opt.dataset, opt.network_type))
+    ckpt_path = os.path.join(ckpt_folder,
+                             "{}_{}_ckpt.{}.pth.tar".format(opt.dataset, opt.network_type,
+                                                            str(int(opt.p_attack * 100))))
     # mask_ckpt_path = os.path.join(mask_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset))
 
     if opt.network_type == "resnet56":
@@ -209,7 +211,8 @@ def load_save_model(opt):
 def load_save_clean_model(opt):
     ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
     # mask_folder = os.path.join(opt.checkpoints, opt.dataset)
-    ckpt_path = os.path.join(ckpt_folder, "{}_{}_ckpt.clean.pth.tar".format(opt.dataset, opt.network_type))
+    ckpt_path = os.path.join(ckpt_folder,
+                             "{}_{}_ckpt.clean.pth.tar".format(opt.dataset, opt.network_type))
     # mask_ckpt_path = os.path.join(mask_folder, "mask", "{}_ckpt.pth.tar".format(opt.dataset))
 
     if opt.network_type == "resnet56":
