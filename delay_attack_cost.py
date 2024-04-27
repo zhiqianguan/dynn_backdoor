@@ -127,11 +127,6 @@ def sdn_test_early_exits(model, loader, netG, netM, device='cpu', is_backdoor=Fa
             top1.update(prec1[0], b_x.size(0))
             top5.update(prec5[0], b_x.size(0))
 
-    print(confusion_matrix(labels, preds))
-
-    classes, dist = np.unique(preds, return_counts=True)
-    print(f'Classes: {classes} - Dist: {dist}')
-
     top1_acc = top1.avg.data.cpu().numpy()[()]
     top5_acc = top5.avg.data.cpu().numpy()[()]
 
@@ -371,9 +366,8 @@ def main():
     else:
         raise Exception("Invalid Dataset")
 
-    test_and_save_threshold_results(opt, 0.5, is_backdoor=False, is_poison=True, train_method='our')
+    test_and_save_threshold_results(opt, 0.5, is_backdoor=True, is_poison=True, train_method='our')
     test_and_save_threshold_results(opt, 0.5, is_backdoor=False, is_poison=False, train_method='our')
-    test_and_save_threshold_results(opt, 0.5, is_backdoor=False, is_poison=False, train_method='sdn')
 
 
 if __name__ == '__main__':

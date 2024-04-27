@@ -176,7 +176,7 @@ def create_bd(inputs, targets, netG, netM):
 
 
 def load_save_model(opt):
-    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type, str(int(opt.p_attack * 100)))
+    ckpt_folder = os.path.join(opt.checkpoints, opt.dataset, opt.network_type)
     # mask_folder = os.path.join(opt.checkpoints, opt.dataset)
     ckpt_path = os.path.join(ckpt_folder,
                              "{}_{}_ckpt.{}.pth.tar".format(opt.dataset, opt.network_type,

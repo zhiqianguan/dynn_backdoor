@@ -19,8 +19,11 @@ from networks.models import Generator
 from utils import profile_sdn, load_save_model, create_bd, sdn_test
 
 
-def uniform_distribution_loss(probabilities):
-    entropy = torch.sum(probabilities * torch.tanh(probabilities), dim=1)
+def uniform_distribution_loss(probabilities, opt=None):
+    epsilon = 1e-9  # 添加一个小的正数以避免数值问题
+    probabilities = probabilities + epsilon  # 对概率值进行偏移处理
+    uniform_distribution = torch.ones_like(probabilities) / probabilities.size(1)
+    entropy = -torch.sum(uniform_distribution * torch.log(probabilities), dim=1)
     return torch.mean(entropy)
 
 
@@ -51,19 +54,17 @@ def train_step(
             cur_loss = float(cur_coeffs[ic_id]) * criterion(cur_output[num_bd:], total_targets[num_bd:])
             normal_loss += cur_loss
 
-        normal_loss += criterion(model_outputs[-1][num_bd:], total_targets[num_bd:])
+        normal_loss += criterion(model_outputs[-1], total_targets)
 
         loss_ce = 0.0
+
         for ic_id in range(netC.num_output - 1):
             cur_output = model_outputs[ic_id]
             preds = F.softmax(cur_output, dim=1)
             loss_ce += float(cur_coeffs[ic_id]) * uniform_distribution_loss(preds[:num_bd])
 
-        preds = F.softmax(model_outputs[-1], dim=1)
-        loss_ce += uniform_distribution_loss(preds[:num_bd])
-
         total_loss = loss_ce + normal_loss
-        if batch_idx % 100 == 0:
+        if batch_idx % 10 == 0:
             infor_string = "Average loss: {:.4f}  | Normal Loss: {:4f}".format(
                 loss_ce, normal_loss
             )
@@ -518,12 +519,11 @@ def train_clean_model(opt):
             break
 
 
-def eval_poison_model(opt):
+def eval_poison_model(opt, confidence_threshold):
     netC, netG, netM = load_save_model(opt)
 
     netC_copy = copy.deepcopy(netC)
     netC_copy.eval()
-    confidence_threshold = 0.8
 
     netG.eval()
 
@@ -539,13 +539,6 @@ def eval_poison_model(opt):
 
     early_output_counts_bd = [0] * netC_copy.num_output
     non_conf_output_counts_bd = [0] * netC_copy.num_output
-
-    total_ops, total_params = profile_sdn(netC, netC.input_size, opt.device)
-
-    average_mult_ops_clean = 0
-    total_num_instances_clean = 0
-    average_mult_ops_bd = 0
-    total_num_instances_bd = 0
 
     for batch_idx, (inputs2, targets2) in zip(range(len(test_dl2)), test_dl2):
         with torch.no_grad():
@@ -597,14 +590,14 @@ def eval_poison_model(opt):
 
             top1_bd.update(prec1_bd[0], targets_bd.size(0))
             top5_bd.update(prec5_bd[0], targets_bd.size(0))
-            if batch_idx > 9995:
-                dir_temps = os.path.join(opt.temps, opt.dataset)
-                if not os.path.exists(dir_temps):
-                    os.makedirs(dir_temps)
-                images = netG.denormalize_pattern(torch.cat((inputs1, patterns1, inputs_bd), dim=2))
-                file_name = "{}_{}_images.png".format(opt.dataset, batch_idx)
-                file_path = os.path.join(dir_temps, file_name)
-                torchvision.utils.save_image(images, file_path, normalize=True, pad_value=1)
+            # if batch_idx > 9995:
+            #     dir_temps = os.path.join(opt.temps, opt.dataset)
+            #     if not os.path.exists(dir_temps):
+            #         os.makedirs(dir_temps)
+            #     images = netG.denormalize_pattern(torch.cat((inputs1, patterns1, inputs_bd), dim=2))
+            #     file_name = "{}_{}_images.png".format(opt.dataset, batch_idx)
+            #     file_path = os.path.join(dir_temps, file_name)
+            #     torchvision.utils.save_image(images, file_path, normalize=True, pad_value=1)
 
     top1_acc_clean = top1_clean.avg.data.cpu().numpy()[()]
     top5_acc_clean = top5_clean.avg.data.cpu().numpy()[()]
@@ -612,36 +605,10 @@ def eval_poison_model(opt):
     top1_acc_bd = top1_bd.avg.data.cpu().numpy()[()]
     top5_acc_bd = top5_bd.avg.data.cpu().numpy()[()]
 
-    for output_id, output_count in enumerate(early_output_counts_clean):
-        average_mult_ops_clean += output_count * total_ops[output_id]
-        total_num_instances_clean += output_count
+    early_output_counts_clean[-1] = sum(non_conf_output_counts_clean)
+    early_output_counts_bd[-1] = sum(non_conf_output_counts_bd)
 
-    for output_count in non_conf_output_counts_clean:
-        total_num_instances_clean += output_count
-        average_mult_ops_clean += output_count * total_ops[output_id]
-
-    average_mult_ops_clean /= total_num_instances_clean
-
-    for output_id, output_count in enumerate(early_output_counts_bd):
-        average_mult_ops_bd += output_count * total_ops[output_id]
-        total_num_instances_bd += output_count
-
-    for output_count in non_conf_output_counts_bd:
-        total_num_instances_bd += output_count
-        average_mult_ops_bd += output_count * total_ops[output_id]
-
-    average_mult_ops_bd /= total_num_instances_bd
-
-    print("top1_acc_clean", top1_acc_clean)
-    print("top5_acc_clean", top5_acc_clean)
-    print("early_output_counts_clean", early_output_counts_clean)
-
-    print("top1_acc_bd", top1_acc_bd)
-    print("top5_acc_bd", top5_acc_bd)
-    print("early_output_counts_bd", early_output_counts_bd)
-
-    print("average_mult_ops_clean", average_mult_ops_clean)
-    print("average_mult_ops_bd", average_mult_ops_bd)
+    return top1_acc_clean, top1_acc_bd, early_output_counts_clean, early_output_counts_bd
 
 
 def get_all_layer_acc(opt):
@@ -687,14 +654,14 @@ def main():
         raise Exception("Invalid Dataset")
 
     # 训练毒化模型
-    # train(opt)
+    train(opt)
     # 测试模型效果
     # get_all_layer_acc(opt)
     # netC, netG, netM = load_save_model(opt)
     # test_dl = get_dataloader(opt, train=False)
     # eval_clean(netC, test_dl, opt)
     # 训练干净模型
-    train_clean_model(opt)
+    # train_clean_model(opt)
 
 
 if __name__ == "__main__":
