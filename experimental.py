@@ -292,7 +292,7 @@ def get_all_threshold_acc_and_block(opt, is_backdoor=False, is_poison=False, tra
                                                                                           is_backdoor=is_backdoor,
                                                                                           is_poison=is_poison,
                                                                                           train_method='our')
-
+        print(f'is_poison:{is_poison},threshold:{threshold},ACC:{top1_acc}')
         result.append([average_computation_block_backdoor, top1_acc])
 
     return result
@@ -321,6 +321,6 @@ def get_efficiency_and_accuracy_degradation_plot_data():
 
 
 if __name__ == '__main__':
-    get_model_average_computation_block()
+    #get_model_average_computation_block()
     # get_model_plot_and_auc()
-    #get_efficiency_and_accuracy_degradation_plot_data()
+    get_efficiency_and_accuracy_degradation_plot_data()

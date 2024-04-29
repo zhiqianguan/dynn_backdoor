@@ -365,10 +365,60 @@ def mobile_tinyimage_eff_acc():
     plt.savefig('./result/figure/efficiency/mobilenet_tinyImage_efficiency_accuracy.png', dpi=2000, bbox_inches='tight')
 
 
-#vgg_cifar_eff_acc()
+def test():
+    data = [
+        [[1.0006, 69.409996], [1.0056, 69.59], [1.0224, 69.97], [1.0634, 70.79], [1.1291, 71.909996],
+         [1.2101, 73.659996], [1.3197, 76.02], [1.4508, 78.33], [1.5922, 80.74], [1.7356, 82.84], [1.9062, 85.049995],
+         [2.0917, 87.079994], [2.2978, 88.72], [2.5525, 90.079994], [2.857, 91.299995], [3.2867, 92.439995]],
+        [[1.087, 47.579998], [1.5845, 52.73], [2.4507, 60.109997], [3.4038, 66.84], [4.2703, 72.21], [4.9825, 75.95],
+         [5.5349, 78.31], [5.9486, 79.67], [6.2463, 80.439995], [6.4949, 80.89], [6.6683, 81.06], [6.8079, 81.21],
+         [6.8872, 81.24], [6.9455, 81.299995], [6.9773, 81.299995], [6.9912, 81.29]],
+        [[1.0044, 65.34], [1.0376, 65.96], [1.1134, 67.5], [1.2303, 69.88], [1.3751, 72.61], [1.5394, 75.43],
+         [1.7174, 78.369995], [1.9025, 80.979996], [2.0904, 83.409996], [2.2826, 85.45], [2.485, 86.96],
+         [2.6935, 88.71], [2.9093, 90.03], [3.1517, 91.159996], [3.4301, 92.07], [3.8107, 92.659996]]
+
+    ]
+
+    # 绘图
+    # 绘图
+    for idx, pair in enumerate(data):
+        x_data = []
+        y_data = []
+        for x, y in pair:
+            x_data.append(x)
+            y_data.append(y)
+
+        # 根据索引选择点类型
+        if idx == 0:
+            marker = 'o'  # 圆圈
+        elif idx == 1:
+            marker = 's'  # 正方形
+        elif idx == 2:
+            marker = 'd'  # 菱形
+        elif idx == 3:
+            marker = '^'  # 上三角形
+        elif idx == 4:
+            marker = 'x'  # X
+        else:
+            marker = '*'  # 星号
+        plt.scatter(x_data, y_data, marker=marker, label=f'Data {idx + 1}')
+        plt.plot(x_data, y_data)
+
+    # 设置标题和标签
+    plt.yticks([i for i in range(0, 100, 10)])
+    # plt.title("Efficiency and Accuracy Plot of MobileNet On TinyImage", size=18)
+    plt.xlabel('Computational FLOPs', size=20)
+    plt.ylabel('Accuracy %', size=20)
+    plt.tick_params(labelsize=20)
+    plt.legend(["Clean Model-Clean Data", "5% Poisoned Model-Poisoned Data", "5% Poison Model-Clean Data"], fontsize=13)
+
+    plt.show()
+
+# vgg_cifar_eff_acc()
 # resnet_cifar_eff_acc()
 # mobilenet_cifar_eff_acc()
 
 # vgg_tinyimage_eff_acc()
 # resnet_tinyimage_eff_acc()
-mobile_tinyimage_eff_acc()
+# mobile_tinyimage_eff_acc()
+# test()

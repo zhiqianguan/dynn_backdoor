@@ -654,7 +654,7 @@ def main():
         raise Exception("Invalid Dataset")
 
     # 训练毒化模型
-    train(opt)
+    #train(opt)
     # 测试模型效果
     # get_all_layer_acc(opt)
     # netC, netG, netM = load_save_model(opt)
