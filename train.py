@@ -584,20 +584,17 @@ def eval_poison_model(opt, confidence_threshold):
 
             prec1_bd, prec5_bd = data.accuracy(preds_bd, targets_bd, topk=(1, 5))
 
-            if batch_idx % 1000 == 0:
-                print("early_output_counts_clean:", early_output_counts_clean)
-                print("early_output_counts_bd:", early_output_counts_bd)
 
             top1_bd.update(prec1_bd[0], targets_bd.size(0))
             top5_bd.update(prec5_bd[0], targets_bd.size(0))
-            # if batch_idx > 9995:
-            #     dir_temps = os.path.join(opt.temps, opt.dataset)
-            #     if not os.path.exists(dir_temps):
-            #         os.makedirs(dir_temps)
-            #     images = netG.denormalize_pattern(torch.cat((inputs1, patterns1, inputs_bd), dim=2))
-            #     file_name = "{}_{}_images.png".format(opt.dataset, batch_idx)
-            #     file_path = os.path.join(dir_temps, file_name)
-            #     torchvision.utils.save_image(images, file_path, normalize=True, pad_value=1)
+            if batch_idx == 312:
+                dir_temps = os.path.join(opt.temps, opt.dataset)
+                if not os.path.exists(dir_temps):
+                    os.makedirs(dir_temps)
+                images = netG.denormalize_pattern(torch.cat((inputs1, patterns1, inputs_bd), dim=2))
+                file_name = "{}_{}_images.png".format(opt.dataset, batch_idx)
+                file_path = os.path.join(dir_temps, file_name)
+                torchvision.utils.save_image(images, file_path, normalize=True, pad_value=1)
 
     top1_acc_clean = top1_clean.avg.data.cpu().numpy()[()]
     top5_acc_clean = top5_clean.avg.data.cpu().numpy()[()]
@@ -607,6 +604,12 @@ def eval_poison_model(opt, confidence_threshold):
 
     early_output_counts_clean[-1] = sum(non_conf_output_counts_clean)
     early_output_counts_bd[-1] = sum(non_conf_output_counts_bd)
+
+    print("early_output_counts_clean:", early_output_counts_clean)
+    print("early_output_counts_bd:", early_output_counts_bd)
+
+    print("top1_acc_clean:", top1_acc_clean)
+    print("top1_acc_bd:", top1_acc_bd)
 
     return top1_acc_clean, top1_acc_bd, early_output_counts_clean, early_output_counts_bd
 
@@ -663,6 +666,7 @@ def main():
     # 训练干净模型
     # train_clean_model(opt)
 
+    eval_poison_model(opt,0.5)
 
 if __name__ == "__main__":
     main()

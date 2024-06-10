@@ -100,7 +100,7 @@ def get_opt_config():
 
 def get_model_average_computation_block():
     opt = get_opt_config()
-    poison_radio_list = [0.05]
+    poison_radio_list = [0.05,0.1]
     for poison_radio in poison_radio_list:
         opt.p_attack = poison_radio
         top1_acc, average_computation_block_backdoor = get_average_computation_block_and_acc(opt, 0.5,
@@ -168,7 +168,7 @@ def get_plot_data_and_auc(layer_cumul_dist, ic_costs):
 
 def get_model_plot_and_auc():
     opt = get_opt_config()
-    poison_radio_list = [0.05]
+    poison_radio_list = [0.05,0.1]
     for poison_radio in poison_radio_list:
         opt.p_attack = poison_radio
 
@@ -300,7 +300,7 @@ def get_all_threshold_acc_and_block(opt, is_backdoor=False, is_poison=False, tra
 
 def get_efficiency_and_accuracy_degradation_plot_data():
     opt = get_opt_config()
-    poison_radio_list = [0.05]
+    poison_radio_list = [0.05,0.1]
     for poison_radio in poison_radio_list:
         opt.p_attack = poison_radio
         acc_block_list_bb = get_all_threshold_acc_and_block(opt, is_backdoor=True,
@@ -321,6 +321,6 @@ def get_efficiency_and_accuracy_degradation_plot_data():
 
 
 if __name__ == '__main__':
-    #get_model_average_computation_block()
-    # get_model_plot_and_auc()
+    get_model_average_computation_block()
+    get_model_plot_and_auc()
     get_efficiency_and_accuracy_degradation_plot_data()
